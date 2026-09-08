@@ -163,7 +163,7 @@ class TestArchivePlanFile(unittest.TestCase):
             dest = archive_plan_file("cwd-01")
 
         expected_dest = self.repo / "docs" / "plans" / "archive" / "cwd-01.md"
-        self.assertEqual(dest, expected_dest)
+        self.assertEqual(dest.resolve(), expected_dest.resolve())
         self.assertTrue(expected_dest.exists())
         self.assertIn("✓ Plan archived: docs/plans/archive/cwd-01.md", fake_out.getvalue())
 

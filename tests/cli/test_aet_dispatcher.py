@@ -94,22 +94,34 @@ class TestRunMapping(unittest.TestCase):
     def _capture_spawn(self, argv, run_id="run-detached-abc"):
         """Run ``app`` with detached Popen captured; return (rc, cmd, kwargs)."""
         captured = {}
+        real_popen = subprocess.Popen
 
         def fake_popen(cmd, **kwargs):
-            captured["cmd"] = cmd
-            captured["kwargs"] = kwargs
-            mock = MagicMock()
-            mock.pid = 12345
-            return mock
+            if isinstance(cmd, (list, tuple)) and any("orchestrator" in str(arg) for arg in cmd):
+                captured["cmd"] = cmd
+                captured["kwargs"] = kwargs
+                mock = MagicMock()
+                mock.pid = 12345
+                mock.poll.return_value = None
+                mock.communicate.return_value = (b"", b"")
+                return mock
+            return real_popen(cmd, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp:
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
-                with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
-                    with patch.object(aet, "_generate_run_id", return_value=run_id):
-                        with patch.object(aet, "_wait_for_run", return_value=0):
-                            rc = aet.app(argv, standalone_mode=False)
+                subprocess.run(["git", "init", "-q", str(tmp)], check=True)
+                (Path(tmp) / ".agents").mkdir(parents=True, exist_ok=True)
+                (Path(tmp) / "docs" / "plans").mkdir(parents=True, exist_ok=True)
+                (Path(tmp) / "docs" / "plans" / "FEAT-001.md").write_text(
+                    "---\nid: FEAT-001\nsize: S\n---\n\n# FEAT-001\n", encoding="utf-8"
+                )
+                with patch("shutil.which", return_value="/bin/kimi"):
+                    with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
+                        with patch.object(aet, "_generate_run_id", return_value=run_id):
+                            with patch.object(aet, "_wait_for_run", return_value=0):
+                                rc = aet.app(argv, standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
         return rc, captured.get("cmd"), captured.get("kwargs")
@@ -204,31 +216,39 @@ class TestRunMapping(unittest.TestCase):
     def test_run_spawns_detached_by_default(self):
         """`aet run` with no flags spawns the orchestrator detached."""
         captured = {}
+        real_popen = subprocess.Popen
 
         def fake_popen(cmd, **kwargs):
-            captured["cmd"] = cmd
-            captured["kwargs"] = kwargs
-            mock = MagicMock()
-            mock.pid = 12345
-            return mock
+            if isinstance(cmd, (list, tuple)) and any("orchestrator" in str(arg) for arg in cmd):
+                captured["cmd"] = cmd
+                captured["kwargs"] = kwargs
+                mock = MagicMock()
+                mock.pid = 12345
+                mock.poll.return_value = None
+                mock.communicate.return_value = (b"", b"")
+                return mock
+            return real_popen(cmd, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp:
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
+                subprocess.run(["git", "init", "-q", str(tmp)], check=True)
+                (Path(tmp) / ".agents").mkdir(parents=True, exist_ok=True)
                 with patch.dict(os.environ, {"AET_CLI_BIN": "claude"}):
-                    with patch.object(
-                        aet.subprocess, "Popen", side_effect=fake_popen
-                    ) as popen_mock:
+                    with patch("shutil.which", return_value="/usr/local/bin/claude"):
                         with patch.object(
-                            aet, "_generate_run_id", return_value="run-detached-abc"
+                            aet.subprocess, "Popen", side_effect=fake_popen
                         ):
-                            rc = aet.app(["run"], standalone_mode=False)
+                            with patch.object(
+                                aet, "_generate_run_id", return_value="run-detached-abc"
+                            ):
+                                rc = aet.app(["run"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
 
             self.assertEqual(rc, 0)
-            popen_mock.assert_called_once()
+            self.assertIsNotNone(captured.get("cmd"))
             self.assertEqual(captured["kwargs"]["start_new_session"], True)
             self.assertIn("--run-id", captured["cmd"])
             self.assertIn("run-detached-abc", captured["cmd"])

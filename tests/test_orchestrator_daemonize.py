@@ -267,16 +267,26 @@ class TestDetachedSpawnReturnsPromptly(unittest.TestCase):
     def test_run_returns_without_waiting_for_child(self):
         proc = MagicMock()
         proc.pid = 4321
+        proc.poll.return_value = None
+        real_popen = subprocess.Popen
+
+        def fake_popen(cmd, **kwargs):
+            if isinstance(cmd, (list, tuple)) and any("orchestrator" in str(arg) for arg in cmd):
+                return proc
+            return real_popen(cmd, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp:
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
+                subprocess.run(["git", "init", "-q", str(tmp)], check=True)
+                (Path(tmp) / ".agents").mkdir(parents=True, exist_ok=True)
                 # Dispatch resolves the adapter before spawning; pin it so this
                 # test does not depend on which agent CLI runs the suite.
                 with patch.dict(os.environ, {"AET_CLI_BIN": "claude"}):
-                    with patch.object(cli_main.subprocess, "Popen", return_value=proc):
-                        rc = cli_main.app(["run"], standalone_mode=False)
+                    with patch("shutil.which", return_value="/usr/local/bin/claude"):
+                        with patch.object(cli_main.subprocess, "Popen", side_effect=fake_popen):
+                            rc = cli_main.app(["run"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
 
