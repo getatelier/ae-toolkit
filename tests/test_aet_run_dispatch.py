@@ -64,6 +64,26 @@ class _IsolatedBinDir(unittest.TestCase):
             os.environ, {"AET_BIN_DIR": str(self.bin_dir), "AET_CLI_BIN": "claude"}
         )
 
+    def _setup_repo(self, path: Path):
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        (path / ".agents").mkdir(parents=True, exist_ok=True)
+
+    def _make_fake_popen(self, captured: dict, child_pid: int = 12345):
+        real_popen = subprocess.Popen
+
+        def fake_popen(cmd, **kwargs):
+            if isinstance(cmd, (list, tuple)) and any("orchestrator" in str(arg) for arg in cmd):
+                captured["cmd"] = cmd
+                captured["kwargs"] = kwargs
+                mock = unittest.mock.MagicMock()
+                mock.pid = child_pid
+                mock.poll.return_value = None
+                mock.communicate.return_value = (b"", b"")
+                return mock
+            return real_popen(cmd, **kwargs)
+
+        return fake_popen
+
 
 class TestRunIdGeneration(unittest.TestCase):
     def test_run_id_has_expected_prefix_and_length(self):
@@ -88,28 +108,24 @@ class TestRunDetachedByDefault(_IsolatedBinDir):
     def test_run_spawns_detached_and_prints_run_id(self):
         captured_proc = {}
 
-        def fake_popen(cmd, **kwargs):
-            captured_proc["cmd"] = cmd
-            captured_proc["kwargs"] = kwargs
-            mock = unittest.mock.MagicMock()
-            mock.pid = 12345
-            return mock
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            self._setup_repo(tmp_path)
+            fake_popen = self._make_fake_popen(captured_proc, 12345)
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
                 with self._bin_env():
-                    with patch.object(aet.subprocess, "Popen", side_effect=fake_popen) as popen_mock:
-                        with patch.object(aet, "_generate_run_id", return_value="run-detached-abc"):
-                            with patch.object(aet.typer, "echo") as echo_mock:
-                                rc = aet.app(["run"], standalone_mode=False)
+                    with patch("shutil.which", return_value="/usr/local/bin/claude"):
+                        with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
+                            with patch.object(aet, "_generate_run_id", return_value="run-detached-abc"):
+                                with patch.object(aet.typer, "echo") as echo_mock:
+                                    rc = aet.app(["run"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
 
             self.assertEqual(rc, 0)
-            popen_mock.assert_called_once()
+            self.assertIsNotNone(captured_proc.get("cmd"))
             self.assertEqual(captured_proc["kwargs"]["start_new_session"], True)
             self.assertTrue(hasattr(captured_proc["kwargs"]["stdout"], "name"))
             self.assertTrue(
@@ -132,15 +148,9 @@ class TestRunDetachedByDefault(_IsolatedBinDir):
         run_dir = None
         child = None
 
-        def fake_popen(cmd, **kwargs):
-            captured_proc["cmd"] = cmd
-            captured_proc["kwargs"] = kwargs
-            mock = unittest.mock.MagicMock()
-            mock.pid = child.pid
-            return mock
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            self._setup_repo(tmp_path)
             run_dir = tmp_path / ".agents" / "runs" / run_id
             old_cwd = os.getcwd()
             try:
@@ -150,10 +160,12 @@ class TestRunDetachedByDefault(_IsolatedBinDir):
                     "---\nid: x\n---\n\n# X\n", encoding="utf-8"
                 )
                 child = _start_child_runner(run_dir, 0, delay=0.1)
+                fake_popen = self._make_fake_popen(captured_proc, child.pid)
                 with self._bin_env():
-                    with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
-                        with patch.object(aet, "_generate_run_id", return_value=run_id):
-                            rc = aet.app(["run-one", "docs/plans/x.md"], standalone_mode=False)
+                    with patch("shutil.which", return_value="/usr/local/bin/claude"):
+                        with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
+                            with patch.object(aet, "_generate_run_id", return_value=run_id):
+                                rc = aet.app(["run-one", "docs/plans/x.md"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
                 if child is not None:
@@ -207,34 +219,32 @@ class TestRetainedFlagsForward(_IsolatedBinDir):
     def test_run_forwards_base_on_failure_task_timeout_cli_bin_and_max_jobs(self):
         captured_proc = {}
 
-        def fake_popen(cmd, **kwargs):
-            captured_proc["cmd"] = cmd
-            mock = unittest.mock.MagicMock()
-            mock.pid = 12347
-            return mock
-
         with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._setup_repo(tmp_path)
+            fake_popen = self._make_fake_popen(captured_proc, 12347)
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
                 with self._bin_env():
-                    with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
-                        rc = aet.app(
-                            [
-                                "run",
-                                "--base",
-                                "feat/x",
-                                "--on-failure",
-                                "halt",
-                                "--task-timeout",
-                                "900",
-                                "--cli-bin",
-                                "/bin/kimi",
-                                "--max-jobs",
-                                "2",
-                            ],
-                            standalone_mode=False,
-                        )
+                    with patch("shutil.which", return_value="/bin/kimi"):
+                        with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
+                            rc = aet.app(
+                                [
+                                    "run",
+                                    "--base",
+                                    "feat/x",
+                                    "--on-failure",
+                                    "halt",
+                                    "--task-timeout",
+                                    "900",
+                                    "--cli-bin",
+                                    "/bin/kimi",
+                                    "--max-jobs",
+                                    "2",
+                                ],
+                                standalone_mode=False,
+                            )
             finally:
                 os.chdir(old_cwd)
 
@@ -256,14 +266,9 @@ class TestRetainedFlagsForward(_IsolatedBinDir):
         run_dir = None
         child = None
 
-        def fake_popen(cmd, **kwargs):
-            captured_proc["cmd"] = cmd
-            mock = unittest.mock.MagicMock()
-            mock.pid = child.pid
-            return mock
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            self._setup_repo(tmp_path)
             run_dir = tmp_path / ".agents" / "runs" / run_id
             old_cwd = os.getcwd()
             try:
@@ -273,13 +278,15 @@ class TestRetainedFlagsForward(_IsolatedBinDir):
                     "---\nid: x\n---\n\n# X\n", encoding="utf-8"
                 )
                 child = _start_child_runner(run_dir, 0, delay=0.1)
+                fake_popen = self._make_fake_popen(captured_proc, child.pid)
                 with self._bin_env():
-                    with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
-                        with patch.object(aet, "_generate_run_id", return_value=run_id):
-                            rc = aet.app(
-                                ["run-one", "docs/plans/x.md", "--base", "feat/x", "--task-timeout", "900"],
-                                standalone_mode=False,
-                            )
+                    with patch("shutil.which", return_value="/usr/local/bin/claude"):
+                        with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
+                            with patch.object(aet, "_generate_run_id", return_value=run_id):
+                                rc = aet.app(
+                                    ["run-one", "docs/plans/x.md", "--base", "feat/x", "--task-timeout", "900"],
+                                    standalone_mode=False,
+                                )
             finally:
                 os.chdir(old_cwd)
                 if child is not None:
@@ -289,12 +296,12 @@ class TestRetainedFlagsForward(_IsolatedBinDir):
                     except subprocess.TimeoutExpired:
                         child.kill()
 
-            self.assertEqual(rc, 0)
-            cmd = captured_proc["cmd"]
-            self.assertIn("--plan-file", cmd)
-            self.assertIn("docs/plans/x.md", cmd)
-            self.assertEqual(cmd[cmd.index("--base") + 1], "feat/x")
-            self.assertEqual(cmd[cmd.index("--task-timeout") + 1], "900")
+        self.assertEqual(rc, 0)
+        cmd = captured_proc["cmd"]
+        self.assertIn("--plan-file", cmd)
+        self.assertIn("docs/plans/x.md", cmd)
+        self.assertEqual(cmd[cmd.index("--base") + 1], "feat/x")
+        self.assertEqual(cmd[cmd.index("--task-timeout") + 1], "900")
 
 
 class TestFollowRun(_IsolatedBinDir):
@@ -427,27 +434,24 @@ class TestRunStartMessage(_IsolatedBinDir):
     def test_start_message_names_log_path_and_describes_report(self):
         captured_proc = {}
 
-        def fake_popen(cmd, **kwargs):
-            captured_proc["cmd"] = cmd
-            captured_proc["kwargs"] = kwargs
-            mock = unittest.mock.MagicMock()
-            mock.pid = 12345
-            return mock
-
         with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._setup_repo(tmp_path)
+            fake_popen = self._make_fake_popen(captured_proc, 12345)
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
                 with self._bin_env():
-                    with patch.object(aet.subprocess, "Popen", side_effect=fake_popen) as popen_mock:
-                        with patch.object(aet, "_generate_run_id", return_value="run-msg-abc"):
-                            with patch.object(aet.typer, "echo") as echo_mock:
-                                rc = aet.app(["run"], standalone_mode=False)
+                    with patch("shutil.which", return_value="/usr/local/bin/claude"):
+                        with patch.object(aet.subprocess, "Popen", side_effect=fake_popen):
+                            with patch.object(aet, "_generate_run_id", return_value="run-msg-abc"):
+                                with patch.object(aet.typer, "echo") as echo_mock:
+                                    rc = aet.app(["run"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
 
             self.assertEqual(rc, 0)
-            popen_mock.assert_called_once()
+            self.assertIsNotNone(captured_proc.get("cmd"))
             printed = "\n".join(str(call.args[0]) for call in echo_mock.call_args_list)
             self.assertIn("Started run run-msg-abc", printed)
             self.assertIn("Log:", printed)

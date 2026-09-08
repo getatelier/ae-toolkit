@@ -17,9 +17,10 @@ class TestRunBaseForwarding:
     """``--base`` is forwarded to the orchestrator exactly as passed."""
 
     def test_run_forwards_base_to_orchestrator(self) -> None:
-        with patch.object(aet, "_spawn_detached") as spawn:
-            spawn.return_value = 0
-            result = run_typer(aet.app, ["run", "--base", "feat/x"])
+        with patch.object(aet, "_validate_preflight"):
+            with patch.object(aet, "_spawn_detached") as spawn:
+                spawn.return_value = 0
+                result = run_typer(aet.app, ["run", "--base", "feat/x"])
 
         assert result.exit_code == 0, result.output
         argv = spawn.call_args[0][0]
@@ -30,12 +31,21 @@ class TestRunBaseForwarding:
 class TestRunOneBaseForwarding:
     """``--base`` is forwarded for single-plan runs too."""
 
-    def test_run_one_forwards_base_to_orchestrator(self) -> None:
+    @pytest.fixture
+    def tmp_cwd(self, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "docs" / "plans").mkdir(parents=True)
+        (tmp_path / "docs" / "plans" / "example.md").write_text(
+            "---\nid: example\nsize: S\n---\n\n# Example\n", encoding="utf-8"
+        )
+        return tmp_path
+
+    def test_run_one_forwards_base_to_orchestrator(self, tmp_cwd: Path) -> None:
         with patch.object(aet, "_spawn_detached") as spawn:
             spawn.return_value = 0
             with patch.object(aet, "_wait_for_run", return_value=0):
                 result = run_typer(
-                    aet.app, ["run-one", "docs/plans/example.md", "--base", "feat/x"]
+                    aet.app, ["run-one", "docs/plans/example.md", "--base", "feat/x"], cwd=str(tmp_cwd)
                 )
 
         assert result.exit_code == 0, result.output

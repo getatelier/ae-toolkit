@@ -12,6 +12,7 @@ import importlib
 import os
 import re
 import secrets
+import shutil
 import string
 import subprocess
 import sys
@@ -59,16 +60,19 @@ from aet.cli import (
     validate_workflows,
 )
 # isort: on
-from aet import telemetry
+from aet import breaker, telemetry
 from aet.backends.factory import (
     LegacyConfigError,
     LegacyTaskBackendError,
     QueueOutsideRepositoryError,
+    create_backend,
 )
 from aet.cli_adapter import resolve_cli_adapter
 from aet.ledger import LedgerCorruptionError
 from aet.liveness import is_run_alive
-from aet.plan_parser import resolve_plan_arg
+from aet.plan_parser import extract_plan_spec, resolve_plan_arg
+from aet.project_id import resolve_repo_root
+from aet.queue import QueueIntegrityError
 
 # Cache populated on first usage error; keys are full command path tuples.
 _EXAMPLE_MAP: dict[tuple[str, ...], str] | None = None
@@ -524,6 +528,92 @@ def _build_orchestrator_flags(
     return flags
 
 
+def _validate_preflight(
+    *,
+    plan_file: str | None = None,
+    cli_bin: str | None = None,
+    queue_file: str = ".agents/aet-queue",
+    skip_intake: bool = False,
+) -> None:
+    """Validate preconditions synchronously before spawning orchestrator.
+
+    Checks:
+    1. Systemic circuit breaker is not tripped in refs/aet/breaker.
+    2. Agent CLI binary resolves and is found on PATH or executable.
+    3. Work queue backend can be loaded (batch mode).
+    4. Target plan file exists, has valid frontmatter, and extracts a spec (run-one).
+    """
+    repo_root = resolve_repo_root(Path.cwd()) or Path.cwd()
+
+    # 1. Systemic circuit breaker check
+    breaker_store = breaker.BreakerStore(repo_root)
+    systemic_tally = breaker_store.load()
+    if breaker.systemic_tripped(systemic_tally):
+        report = breaker.systemic_report(systemic_tally)
+        typer.echo(f"⛔ {report}", err=True)
+        raise typer.Exit(1)
+
+    # 2. Agent CLI binary resolution
+    try:
+        adapter = resolve_cli_adapter(cli_bin)
+        target_bin = cli_bin if cli_bin is not None else adapter.bin
+        resolved_path = shutil.which(target_bin)
+        if not resolved_path and not (
+            os.path.isfile(target_bin) and os.access(target_bin, os.X_OK)
+        ):
+            typer.echo(
+                f"⛔ Agent CLI binary '{target_bin}' not found on PATH or executable.",
+                err=True,
+            )
+            raise typer.Exit(1)
+    except (RuntimeError, ValueError) as exc:
+        typer.echo(f"⛔ {exc}", err=True)
+        raise typer.Exit(1)
+
+    # 3. Work queue check (batch mode)
+    if plan_file is None:
+        try:
+            history_file = str(Path(queue_file).with_name("work-history.jsonl"))
+            config_path = str(Path(queue_file).with_name("aet-config.json"))
+            backend = create_backend(
+                config_path=config_path,
+                queue_file=queue_file,
+                history_file=history_file,
+            )
+            backend.fetch()
+            backend.load()
+        except (
+            QueueIntegrityError,
+            LegacyTaskBackendError,
+            LegacyConfigError,
+            QueueOutsideRepositoryError,
+            LedgerCorruptionError,
+        ) as exc:
+            typer.echo(f"⛔ {exc}", err=True)
+            raise typer.Exit(1)
+        except Exception as exc:
+            typer.echo(f"⛔ Work queue validation failed: {exc}", err=True)
+            raise typer.Exit(1)
+
+    # 4. Target plan file check (run-one)
+    if plan_file is not None:
+        plan_path = Path(plan_file)
+        if not plan_path.is_file():
+            typer.echo(f"⛔ Plan file not found: {plan_file}", err=True)
+            raise typer.Exit(1)
+        spec = extract_plan_spec(plan_path)
+        if (
+            spec is None
+            or not spec.get("title")
+            or not spec.get("frontmatter", {}).get("id")
+        ):
+            typer.echo(
+                f"⛔ Invalid plan spec in {plan_file}: missing title or frontmatter id",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+
 def _spawn_detached(argv: list[str], run_id: str) -> int:
     """Spawn the orchestrator detached and print the run ID."""
     rdir = _run_dir(run_id)
@@ -544,6 +634,27 @@ def _spawn_detached(argv: list[str], run_id: str) -> int:
             env=env,
             cwd=os.getcwd(),
         )
+
+        # Startup handshake: check child process vitality past launch window
+        time.sleep(0.1)
+        ret = proc.poll()
+        if ret is not None:
+            log.flush()
+            err_output = ""
+            if log_file.is_file():
+                try:
+                    err_output = log_file.read_text(encoding="utf-8").strip()
+                except OSError:
+                    pass
+            if err_output:
+                typer.echo(err_output, err=True)
+            else:
+                typer.echo(
+                    f"⛔ Orchestrator process failed immediately on startup (exit code {ret}).",
+                    err=True,
+                )
+            raise typer.Exit(ret if ret != 0 else 1)
+
         (rdir / "pid").write_text(str(proc.pid), encoding="utf-8")
 
     typer.echo(f"🚀 Started run {run_id}")
@@ -574,6 +685,8 @@ def run(
     if follow is not None:
         _follow_run(follow)
         return
+
+    _validate_preflight(cli_bin=cli_bin, queue_file=".agents/aet-queue")
 
     run_id = _generate_run_id()
     flags = _build_orchestrator_flags(
@@ -617,6 +730,12 @@ def run_one(
     except ValueError as exc:
         typer.echo(f"⛔ {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    _validate_preflight(
+        plan_file=resolved,
+        cli_bin=cli_bin,
+        skip_intake=skip_intake,
+    )
 
     run_id = _generate_run_id()
     flags = _build_orchestrator_flags(
