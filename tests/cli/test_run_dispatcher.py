@@ -17,9 +17,10 @@ class TestRunBaseForwarding:
     """``--base`` is forwarded to the orchestrator exactly as passed."""
 
     def test_run_forwards_base_to_orchestrator(self) -> None:
-        with patch.object(aet, "_spawn_detached") as spawn:
-            spawn.return_value = 0
-            result = run_typer(aet.app, ["run", "--base", "feat/x"])
+        with patch.object(aet, "_validate_preflight"):
+            with patch.object(aet, "_spawn_detached") as spawn:
+                spawn.return_value = 0
+                result = run_typer(aet.app, ["run", "--base", "feat/x"])
 
         assert result.exit_code == 0, result.output
         argv = spawn.call_args[0][0]

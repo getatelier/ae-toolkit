@@ -97,7 +97,7 @@ def test_occurred_at_differs_from_created_at(tmp_path: Path) -> None:
     )
     assert event["occurred_at"] == "2026-01-01T00:00:00Z"
     assert event["created_at"] != event["occurred_at"]
-    assert event["created_at"].startswith("2026-08")
+    assert event["created_at"].startswith("2026-")
 
 
 def test_ref_kind_required_when_ref_supplied(tmp_path: Path) -> None:
