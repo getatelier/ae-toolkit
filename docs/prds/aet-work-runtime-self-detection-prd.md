@@ -1,5 +1,7 @@
 # PRD: Fix aet-work `run` Runtime Detection to Use Current Agent
 
+> **Status: Superseded.** The self-report mechanism specified here — the skill asking the executing agent to name its own CLI — was AI-remembered state and regressed: on 2026-09-08 a Claude Code session was still dispatching its tasks to `kimi`. Detection is now code-enforced in `resolve_cli_adapter` (`src/aet/cli_adapter.py`), which reads the agent CLI off the process ancestry and errors rather than probing `PATH`. The goals below still hold; the Proposed Detection section does not, and `aet-work` carries no detection logic at all. See commit `adb1404f`.
+
 ## Overview
 
 The `aet-work run` command generates an orchestrator script that spawns a fresh OS process for each queued task. The script must invoke the same agent CLI that is currently running `aet-work` — otherwise the spawned tasks run on a different agent than the one the user chose.
