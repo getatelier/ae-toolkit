@@ -11,7 +11,7 @@ Run the orchestrator in batch mode.
 - `--follow` *str* — Follow an existing run id.
 - `--on-failure` *str* — triage|continue|halt
 - `--task-timeout` *int* — Per-task timeout (s).
-- `--cli-bin` *str* — Agent CLI binary path.
+- `--cli-bin` *str* — Agent CLI binary path. Defaults to the agent CLI that invoked aet; required when no agent CLI is detected.
 - `--base` *str* — Override the worktree base branch/ref.
 - `--max-jobs` *int* — Max parallel tasks (batch mode). (default: `4`)
 
@@ -25,7 +25,7 @@ Run the orchestrator for a single plan.
 - `--follow` *str* — Follow an existing run id.
 - `--on-failure` *str* — triage|continue|halt
 - `--task-timeout` *int* — Per-task timeout (s).
-- `--cli-bin` *str* — Agent CLI binary path.
+- `--cli-bin` *str* — Agent CLI binary path. Defaults to the agent CLI that invoked aet; required when no agent CLI is detected.
 - `--base` *str* — Override the worktree base branch/ref.
 - `--skip-intake` *boolean* — Run a plan that fails intake validation; the bypass is recorded. (default: `False`)
 

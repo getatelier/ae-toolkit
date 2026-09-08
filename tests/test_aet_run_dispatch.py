@@ -54,7 +54,15 @@ class _IsolatedBinDir(unittest.TestCase):
         self.bin_dir = Path(self._tmp.name) / "bin"
 
     def _bin_env(self):
-        return patch.dict(os.environ, {"AET_BIN_DIR": str(self.bin_dir)})
+        """Isolate the spawn bin dir and pin the agent CLI.
+
+        ``AET_CLI_BIN`` is set because dispatch now always forwards
+        ``--cli-bin``: without it these tests would depend on which agent CLI
+        happens to be an ancestor of the test runner.
+        """
+        return patch.dict(
+            os.environ, {"AET_BIN_DIR": str(self.bin_dir), "AET_CLI_BIN": "claude"}
+        )
 
 
 class TestRunIdGeneration(unittest.TestCase):

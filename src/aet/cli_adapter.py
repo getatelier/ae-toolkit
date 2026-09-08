@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -160,8 +160,115 @@ ADAPTERS: dict[str, CLIAdapter] = {
 }
 
 
+# How far up the process tree to look for the agent CLI that launched ``aet``.
+# The observed chain is short (``aet`` -> shell -> agent), but an agent may put
+# a wrapper or two in between; the bound keeps a pathological tree from turning
+# detection into a long walk.
+_ANCESTRY_MAX_DEPTH = 12
+
+
+def _process_parent_and_comm(pid: int) -> tuple[int | None, str | None]:
+    """Return ``(ppid, executable)`` for ``pid``, or ``(None, None)``.
+
+    ``ppid`` is requested first because it is an unambiguous integer token; the
+    remainder of the line is the executable, which may itself contain spaces.
+    """
+    try:
+        proc = subprocess.run(
+            ["ps", "-o", "ppid=,comm=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        # Any failure to query the process table means "host unknown", never a
+        # failed run: detection is an inference about the caller, not work.
+        return None, None
+    line = proc.stdout.strip()
+    if not line:
+        return None, None
+    parts = line.split(maxsplit=1)
+    try:
+        ppid = int(parts[0])
+    except ValueError:
+        return None, None
+    comm = parts[1].strip() if len(parts) > 1 else None
+    return ppid, comm
+
+
+def _process_argv0(pid: int) -> str | None:
+    """Return ``argv[0]`` for ``pid``, or ``None``.
+
+    A CLI shipped as a script keeps its own name in ``argv[0]`` while ``comm``
+    reports the interpreter that executes it (e.g. ``node``), so this is the
+    second place a host agent can identify itself.
+    """
+    try:
+        proc = subprocess.run(
+            ["ps", "-o", "command=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    line = proc.stdout.strip()
+    if not line:
+        return None
+    return line.split()[0]
+
+
+def _adapter_for_executable(executable: str | None) -> CLIAdapter | None:
+    """Return the adapter whose ``bin`` is the basename of ``executable``."""
+    if not executable:
+        return None
+    name = os.path.basename(executable)
+    for adapter in ADAPTERS.values():
+        if name == adapter.bin:
+            return adapter
+    return None
+
+
+def detect_host_adapter() -> CLIAdapter | None:
+    """Return the adapter for the agent CLI running this process, or ``None``.
+
+    The agent session that invoked ``aet`` is an ancestor of it, so the process
+    tree names the answer outright. This is deliberately not read from the
+    environment: agent CLIs are forked from one another and inherit each other's
+    marker variables, so an environment probe reproduces the very bug it would
+    be there to fix — an agent being told it is some other agent. A process
+    cannot misreport which binary it is executing.
+
+    Detection is a last resort, below ``--cli-bin`` and ``AET_CLI_BIN``: a
+    caller that states the adapter is always believed.
+    """
+    pid: int | None = os.getppid()
+    seen: set[int] = set()
+    for _ in range(_ANCESTRY_MAX_DEPTH):
+        if pid is None or pid <= 1 or pid in seen:
+            return None
+        seen.add(pid)
+        ppid, comm = _process_parent_and_comm(pid)
+        adapter = _adapter_for_executable(comm) or _adapter_for_executable(
+            _process_argv0(pid)
+        )
+        if adapter is not None:
+            return adapter
+        pid = ppid
+    return None
+
+
 def resolve_cli_adapter(cli_bin: str | None = None) -> CLIAdapter:
-    """Resolve the CLI adapter using explicit bin or environment."""
+    """Resolve the CLI adapter from an explicit bin, the environment, or the host.
+
+    There is no fallback to whichever supported CLI happens to be installed.
+    Presence on ``PATH`` says a CLI *could* run the work, never that it *should*:
+    on a machine with several agent CLIs installed, a scan silently hands the
+    run to whichever one sorts first, which is how a Claude Code session ends up
+    dispatching its tasks to a different agent. When nothing states the adapter
+    and no host agent can be detected, that is a question for the caller, so it
+    is raised rather than guessed.
+    """
     if cli_bin:
         for adapter in ADAPTERS.values():
             if adapter.bin == cli_bin or cli_bin.endswith(adapter.bin):
@@ -172,11 +279,17 @@ def resolve_cli_adapter(cli_bin: str | None = None) -> CLIAdapter:
     if env_bin:
         return resolve_cli_adapter(env_bin)
 
-    for adapter in ADAPTERS.values():
-        if shutil.which(adapter.bin):
-            return adapter
+    host = detect_host_adapter()
+    if host is not None:
+        return host
 
-    raise RuntimeError("No supported AI coding agent CLI found on PATH.")
+    supported = ", ".join(ADAPTERS)
+    raise RuntimeError(
+        "Could not determine which agent CLI to run: no --cli-bin was given, "
+        "AET_CLI_BIN is unset, and no supported agent CLI was found among this "
+        f"process's ancestors. Pass --cli-bin (one of: {supported}) or set "
+        "AET_CLI_BIN."
+    )
 
 
 def _resolve_claude_session_id(output: str, workdir: str | None) -> str | None:

@@ -419,7 +419,14 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--queue-file", help="Path to queue anchor (batch mode)")
     group.add_argument("--plan-file", help="Path to a single plan.md (single-plan mode)")
     parser.add_argument("--repo-root", default=os.getcwd(), help="Repository root path")
-    parser.add_argument("--cli-bin", default=None, help="Agent CLI binary path")
+    parser.add_argument(
+        "--cli-bin",
+        default=None,
+        help=(
+            "Agent CLI binary path. Defaults to the agent CLI that invoked aet; "
+            "required when no agent CLI is detected."
+        ),
+    )
     parser.add_argument(
         "--base",
         default=None,
@@ -4190,7 +4197,10 @@ def orchestrator_callback(
     cli_bin: Optional[str] = typer.Option(
         None,
         "--cli-bin",
-        help="Agent CLI binary path.",
+        help=(
+            "Agent CLI binary path. Defaults to the agent CLI that invoked aet; "
+            "required when no agent CLI is detected."
+        ),
     ),
     base: Optional[str] = typer.Option(
         None,

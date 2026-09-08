@@ -7,8 +7,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from aet import session_log_agy, session_log_claude
-from aet.cli_adapter import ADAPTERS, CLIAdapter, resolve_cli_adapter
+from aet import cli_adapter, session_log_agy, session_log_claude
+from aet.cli_adapter import (
+    ADAPTERS,
+    CLIAdapter,
+    detect_host_adapter,
+    resolve_cli_adapter,
+)
 
 
 class TestCLIAdapter(unittest.TestCase):
@@ -139,9 +144,19 @@ class TestCLIAdapter(unittest.TestCase):
         self.assertEqual(cmd, ["test", "-p", "run tests"])
 
 
-    def test_agy_is_last_in_the_path_probe_order(self):
-        """Adding agy must not change which CLI an existing box auto-selects."""
-        self.assertEqual(list(ADAPTERS), ["kimi", "claude", "agy"])
+    def test_installed_cli_is_never_probed_on_path(self):
+        """Resolution must not consult PATH: being installed is not being asked for.
+
+        The regression this guards: on a box with several agent CLIs installed,
+        a PATH probe silently handed every run to whichever adapter sorted
+        first, so a Claude Code session dispatched its tasks to kimi.
+        """
+        with patch.object(cli_adapter, "shutil", create=True) as shutil_mock:
+            with patch.object(cli_adapter, "detect_host_adapter", return_value=None):
+                with patch.dict("os.environ", {}, clear=True):
+                    with self.assertRaises(RuntimeError):
+                        resolve_cli_adapter()
+        shutil_mock.which.assert_not_called()
 
     def test_unsupported_cli_raises(self):
         with self.assertRaises(ValueError) as ctx:
@@ -471,3 +486,106 @@ class TestResolveSessionRef(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHostAdapterDetection(unittest.TestCase):
+    """The adapter is the agent CLI that invoked ``aet``, read off the process tree."""
+
+    def _fake_tree(self, chain):
+        """Patch ancestry lookups to walk ``chain`` — a list of (pid, comm)."""
+        table = {
+            pid: (chain[i + 1][0] if i + 1 < len(chain) else 1, comm)
+            for i, (pid, comm) in enumerate(chain)
+        }
+
+        def parent_and_comm(pid):
+            return table.get(pid, (None, None))
+
+        return patch.multiple(
+            cli_adapter,
+            _process_parent_and_comm=parent_and_comm,
+            _process_argv0=lambda pid: None,
+        )
+
+    def test_detects_the_agent_cli_among_the_ancestors(self):
+        """aet -> shell -> claude resolves claude, not the first installed CLI."""
+        chain = [(100, "/bin/bash"), (200, "claude")]
+        with patch.object(cli_adapter.os, "getppid", return_value=100):
+            with self._fake_tree(chain):
+                self.assertEqual(detect_host_adapter().name, "claude")
+
+    def test_detection_reads_the_executable_basename_not_the_path(self):
+        """An agent installed under a versioned path is still that agent."""
+        chain = [(100, "/Users/x/.kimi-code/bin/kimi")]
+        with patch.object(cli_adapter.os, "getppid", return_value=100):
+            with self._fake_tree(chain):
+                self.assertEqual(detect_host_adapter().name, "kimi")
+
+    def test_argv0_identifies_a_script_run_by_an_interpreter(self):
+        """``comm`` reports the interpreter; ``argv[0]`` still names the CLI."""
+        with patch.object(cli_adapter.os, "getppid", return_value=100):
+            with patch.multiple(
+                cli_adapter,
+                _process_parent_and_comm=lambda pid: (1, "/usr/bin/node"),
+                _process_argv0=lambda pid: "/opt/agy/bin/agy",
+            ):
+                self.assertEqual(detect_host_adapter().name, "agy")
+
+    def test_no_agent_ancestor_detects_nothing(self):
+        """A plain terminal is not an agent session; detection must not guess."""
+        chain = [(100, "/bin/bash"), (200, "login")]
+        with patch.object(cli_adapter.os, "getppid", return_value=100):
+            with self._fake_tree(chain):
+                self.assertIsNone(detect_host_adapter())
+
+    def test_walk_is_bounded_and_survives_a_cycle(self):
+        """A self-parenting pid must end the walk, not spin it."""
+        with patch.object(cli_adapter.os, "getppid", return_value=100):
+            with patch.multiple(
+                cli_adapter,
+                _process_parent_and_comm=lambda pid: (100, "/bin/bash"),
+                _process_argv0=lambda pid: None,
+            ):
+                self.assertIsNone(detect_host_adapter())
+
+    def test_unreadable_process_table_detects_nothing(self):
+        """A failed ``ps`` means "host unknown", never a crashed run."""
+        with patch.object(cli_adapter.os, "getppid", return_value=100):
+            with patch.multiple(
+                cli_adapter,
+                _process_parent_and_comm=lambda pid: (None, None),
+                _process_argv0=lambda pid: None,
+            ):
+                self.assertIsNone(detect_host_adapter())
+
+
+class TestResolutionPrecedence(unittest.TestCase):
+    """Explicit statements outrank detection; detection outranks nothing at all."""
+
+    def test_explicit_cli_bin_wins_over_the_host(self):
+        with patch.object(cli_adapter, "detect_host_adapter") as detect:
+            self.assertEqual(resolve_cli_adapter("kimi").name, "kimi")
+        detect.assert_not_called()
+
+    def test_env_bin_wins_over_the_host(self):
+        with patch.dict("os.environ", {"AET_CLI_BIN": "agy"}):
+            with patch.object(cli_adapter, "detect_host_adapter") as detect:
+                self.assertEqual(resolve_cli_adapter().name, "agy")
+            detect.assert_not_called()
+
+    def test_host_is_used_when_nothing_is_stated(self):
+        host = ADAPTERS["claude"]
+        with patch.dict("os.environ", {}, clear=True):
+            with patch.object(cli_adapter, "detect_host_adapter", return_value=host):
+                self.assertIs(resolve_cli_adapter(), host)
+
+    def test_undetectable_host_raises_and_names_the_flag(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with patch.object(cli_adapter, "detect_host_adapter", return_value=None):
+                with self.assertRaises(RuntimeError) as ctx:
+                    resolve_cli_adapter()
+        message = str(ctx.exception)
+        self.assertIn("--cli-bin", message)
+        self.assertIn("AET_CLI_BIN", message)
+        for name in ADAPTERS:
+            self.assertIn(name, message)

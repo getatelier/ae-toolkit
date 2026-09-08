@@ -65,6 +65,7 @@ from aet.backends.factory import (
     LegacyTaskBackendError,
     QueueOutsideRepositoryError,
 )
+from aet.cli_adapter import resolve_cli_adapter
 from aet.ledger import LedgerCorruptionError
 from aet.liveness import is_run_alive
 from aet.plan_parser import resolve_plan_arg
@@ -496,14 +497,26 @@ def _build_orchestrator_flags(
 
     ``--isolation`` is supplied internally at its default (``standard``);
     ``--max-jobs`` defaults to 4 and is caller-tunable only for ``aet run``.
+
+    ``--cli-bin`` is always forwarded, resolved here when the caller did not
+    state one. The orchestrator is spawned detached (``start_new_session``) and
+    is reparented as soon as this process exits, so by the time it would resolve
+    an adapter for itself the agent session that started the run is no longer
+    among its ancestors and host detection cannot see it. Resolving in the
+    session and pinning the answer also puts the failure in front of the caller
+    instead of in a detached log they have no reason to open.
     """
     flags = ["--max-jobs", str(max_jobs), "--isolation", "standard"]
     if on_failure is not None:
         flags.extend(["--on-failure", on_failure])
     if task_timeout is not None:
         flags.extend(["--task-timeout", str(task_timeout)])
-    if cli_bin is not None:
-        flags.extend(["--cli-bin", cli_bin])
+    # An explicit value is forwarded verbatim; the orchestrator resolves it the
+    # same way this process would, and the caller's literal argument stays
+    # visible in the spawned argv.
+    flags.extend(
+        ["--cli-bin", cli_bin if cli_bin is not None else resolve_cli_adapter().bin]
+    )
     if base is not None:
         flags.extend(["--base", base])
     if skip_intake:
@@ -544,7 +557,14 @@ def run(
     follow: str | None = typer.Option(None, "--follow", help="Follow an existing run id."),
     on_failure: str | None = typer.Option(None, "--on-failure", help="triage|continue|halt"),
     task_timeout: int | None = typer.Option(None, "--task-timeout", help="Per-task timeout (s)."),
-    cli_bin: str | None = typer.Option(None, "--cli-bin", help="Agent CLI binary path."),
+    cli_bin: str | None = typer.Option(
+        None,
+        "--cli-bin",
+        help=(
+            "Agent CLI binary path. Defaults to the agent CLI that invoked aet; "
+            "required when no agent CLI is detected."
+        ),
+    ),
     base: str | None = typer.Option(None, "--base", help="Override the worktree base branch/ref."),
     max_jobs: int = typer.Option(
         4, "--max-jobs", help="Max parallel tasks (batch mode)."
@@ -572,7 +592,14 @@ def run_one(
     follow: str | None = typer.Option(None, "--follow", help="Follow an existing run id."),
     on_failure: str | None = typer.Option(None, "--on-failure", help="triage|continue|halt"),
     task_timeout: int | None = typer.Option(None, "--task-timeout", help="Per-task timeout (s)."),
-    cli_bin: str | None = typer.Option(None, "--cli-bin", help="Agent CLI binary path."),
+    cli_bin: str | None = typer.Option(
+        None,
+        "--cli-bin",
+        help=(
+            "Agent CLI binary path. Defaults to the agent CLI that invoked aet; "
+            "required when no agent CLI is detected."
+        ),
+    ),
     base: str | None = typer.Option(None, "--base", help="Override the worktree base branch/ref."),
     skip_intake: bool = typer.Option(
         False,

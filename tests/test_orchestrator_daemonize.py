@@ -272,8 +272,11 @@ class TestDetachedSpawnReturnsPromptly(unittest.TestCase):
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
-                with patch.object(cli_main.subprocess, "Popen", return_value=proc):
-                    rc = cli_main.app(["run"], standalone_mode=False)
+                # Dispatch resolves the adapter before spawning; pin it so this
+                # test does not depend on which agent CLI runs the suite.
+                with patch.dict(os.environ, {"AET_CLI_BIN": "claude"}):
+                    with patch.object(cli_main.subprocess, "Popen", return_value=proc):
+                        rc = cli_main.app(["run"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
 

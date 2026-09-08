@@ -216,9 +216,14 @@ class TestRunMapping(unittest.TestCase):
             old_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
-                with patch.object(aet.subprocess, "Popen", side_effect=fake_popen) as popen_mock:
-                    with patch.object(aet, "_generate_run_id", return_value="run-detached-abc"):
-                        rc = aet.app(["run"], standalone_mode=False)
+                with patch.dict(os.environ, {"AET_CLI_BIN": "claude"}):
+                    with patch.object(
+                        aet.subprocess, "Popen", side_effect=fake_popen
+                    ) as popen_mock:
+                        with patch.object(
+                            aet, "_generate_run_id", return_value="run-detached-abc"
+                        ):
+                            rc = aet.app(["run"], standalone_mode=False)
             finally:
                 os.chdir(old_cwd)
 
@@ -228,6 +233,9 @@ class TestRunMapping(unittest.TestCase):
             self.assertIn("--run-id", captured["cmd"])
             self.assertIn("run-detached-abc", captured["cmd"])
             self.assertIn("--log-file", captured["cmd"])
+            # The adapter is resolved in-session and pinned for the detached
+            # child, which is reparented away from the calling agent.
+            self.assertEqual(captured["cmd"][captured["cmd"].index("--cli-bin") + 1], "claude")
 
 
 class TestAetErrorPaths(unittest.TestCase):
