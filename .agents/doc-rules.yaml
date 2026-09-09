@@ -152,6 +152,12 @@ rules:
     severity: warning
     reason: "The ADR corpus must maintain number uniqueness, relation integrity, and subject frontmatter"
 
+  # dcl-05: Code anchors resolve to a symbol, not a line
+  - type: code_anchor_resolves
+    target: docs/prds
+    severity: warning
+    reason: "Code anchors in PRDs must resolve to a symbol, not a line"
+
   # t2r-06: intake-commit rules are pinned in data
   - type: must_contain
     target: skills/aet-work/SKILL.md
@@ -261,3 +267,8 @@ rules:
       - "<int>"
       - "[default:"
     reason: "CLI option syntax must be generated from the command tree or absent; verbatim Typer/Click markers are hand-copied syntax (R-4)"
+
+  # dcl-05: PRD code anchors must resolve to symbols, not line numbers (R-3, R-5, R-6)
+  - type: code_anchor_resolves
+    target: docs/prds
+    reason: "Code anchors in PRDs must resolve to valid files and symbols, not line numbers (dcl-05)"

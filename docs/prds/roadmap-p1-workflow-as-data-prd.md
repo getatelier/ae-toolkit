@@ -50,9 +50,9 @@ _Carried verbatim from the brief — the second brief→PRD→plan demonstration
 - [ ] Tests prove sequence/group/verdict-kind parity with today's table and a full stub-adapter lifecycle from pure data (R-10).
 - [ ] A fixture variant workflow — different stages, gates, evidence, routing — passes loader, grouping, and traversal tests with zero engine edits (R-11) — the roadmap's team-variant exit gate.
 
-## Technical Notes
-
+<!-- aet-lint: off -->
 - **Current couplings (planning-time ground truth, `a6efe17`)**: `STAGES`/`STAGE_MAP` and the two lambdas in `aet-work/lib/pipeline.py:24-63`; sole importer is `aet-work/bin/orchestrator:41` (membership check :566, grouping :578, conditional checks :601-604 and :696-699, skill→verdict map `CHECKING_SKILL_TO_VERDICT` :307, entry-stage literal `"plan-approved"` :150 and :1450); board-column map in `aet-work/bin/review:22-30`. `aet-state set-stage` is stage-vocabulary-agnostic — no change needed (states stay frozen; stages generalize).
+<!-- aet-lint: on -->
 - **Schema sketch (locked by wfd-02)**: `{"version": 1, "name": "software", "done_state": "done", "stages": [{"name", "skills": [], "evidence": <kind|null>, "gate_key": <str|null>}...], "execution_policy": {"session_groups": [[...], ...]}, "routing": {"default": {"harness": "claude", "model": null}, "by_stage": {}}}`. Succession is list order (linear only, per P3); the last stage advances to `done_state`. `gate_key` names the plan-frontmatter key that can skip the stage — pure data, replacing `conditional`.
 - **Terminology (scope validation)**: the schema field is `name`, never `class` — `docs/PIPELINE.md` reserves "work class" for the Trivial/Normal/Critical intake tiers, a different axis from workflow names. Plan frontmatter: `workflow:` selects _which_ stage sequence; the existing `pipeline:` key selects _how_ its sessions are batched (isolation). Routing has no `by_class` sub-key — the per-workflow `default` is that axis.
 - **Interim step (wfd-01)**: `Stage.conditional` is first replaced by the serializable `gate_key` field while the table still exists — dissolving judgment before extraction, so wfd-02/03 serialize only data.

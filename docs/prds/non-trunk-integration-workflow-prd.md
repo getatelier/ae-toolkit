@@ -81,15 +81,15 @@ scope — the epic/integration layer — is a feature and is planned as one.
   is a per-run input, not primarily project configuration, because a project has
   one trunk but many epics.
 - **R-3** — `trunk_branch` and `integration_mode` resolve through the
-  external-first chain already implemented in `backends/factory.py:59`
+  external-first chain already implemented in `src/aet/backends/factory.py`
   (`AET_WORK_CONFIG` → `~/.aet/{slug}/config.json` → `.agents/aet-work.json` →
   defaults). No second config reader is introduced.
 - **R-4** — Every consumer of a base or trunk ref reads the resolver:
-  `create_worktree` (`worktree.py:16`), `remove_worktree` (`:154`),
-  `check_main_hygiene` (`:377`, `:386`), `_session_diff_stats`
-  (`orchestrator.py:428`, `:437`), and `is_ancestor_of_main`
-  (`aet_state.py:69`). `check_main_hygiene` is renamed to `check_base_hygiene`
-  and `is_ancestor_of_main` is renamed to name the check rather than the branch.
+  `create_worktree` (`src/aet/worktree.py`), `remove_worktree`,
+  `check_main_hygiene`, `_session_diff_stats`
+  (`src/aet/cli/orchestrator.py`), and `is_ancestor_of_target`
+  (`src/aet/cli/aet_state.py`). `check_main_hygiene` is renamed to `check_base_hygiene`
+  and `is_ancestor_of_main` is renamed to `is_ancestor_of_target` to name the check rather than the branch.
   Per the project's no-backward-compat rule these are renames, not aliases. In
   `single-pr` mode (ADR-045 decision 6) the hygiene and telemetry consumers read
   the integration branch rather than the trunk, so a run is gated on the epic's
@@ -112,11 +112,11 @@ scope — the epic/integration layer — is a feature and is planned as one.
   derived from one shared constant rather than restated per call site. The
   constant covers at minimum the four queue sidecars, `.agents/runs/`, and
   `.worktrees/` (which `create_worktree` writes inside `repo_root`,
-  `worktree.py:24`); the plan audits every in-repo write path against it.
+  `src/aet/worktree.py`); the plan audits every in-repo write path against it.
 - **R-9** — `aet setup` **writes** the ignore entries to `.gitignore` as code,
   from the same shared constant as R-8 so the gate and the setup writer can
-  never disagree. The prose lists in `aet-setup/SKILL.md:365`,
-  `checklist.md:111`, and `references/README.md:47` are corrected and made
+  never disagree. The prose lists in `skills/aet-setup/SKILL.md`,
+  `checklist.md`, and `references/README.md` are corrected and made
   consistent with what the code writes.
 
 ### Queue recoverability (ADR-044)
@@ -124,9 +124,8 @@ scope — the epic/integration layer — is a feature and is planned as one.
 - **R-10** — `init-queue` scopes validation to the plans being included.
   Invalid unrelated plans are warned and skipped. The queue file is never left
   unwritten because of a plan the caller did not ask to include. This requires
-  moving validation after the `is_settled_plan` (`init_queue.py:253`) and
-  `is_sprint_member` (`:260`) skips, which today run after the abort at
-  `:230-238`. Whether `queue sync` gets the same treatment is an open question
+  moving validation after the `is_settled_plan` (`src/aet/plan_parser.py`) and
+  `is_sprint_member` skips. Whether `queue sync` gets the same treatment is an open question
   below.
 - **R-11** — `aet state heal` detects and repairs a task whose stored state is
   `in_progress` or `awaiting_merge` and whose recorded branch does not exist,
@@ -275,16 +274,16 @@ scope — the epic/integration layer — is a feature and is planned as one.
 ## Technical Notes
 
 - **The deepest hardcoding is in the state machine, not the plumbing.**
-  `is_ancestor_of_main` (`aet_state.py:69`) feeds `derive_status`
-  (`:181-185`), which decides `merged`. In a non-`main` repository a genuinely
+  `is_ancestor_of_target` in `src/aet/cli/aet_state.py` feeds `derive_status`,
+  which decides `merged`. In a non-`main` repository a genuinely
   merged task can never derive as `merged`, so ADR-011 never records the
   terminal transition, dependents never unblock, and heal's primary repair
-  (`:518`) is unreachable. This is why R-4 must land as one change: fixing the
+  is unreachable. This is why R-4 must land as one change: fixing the
   git plumbing alone converts a loud failure into a silent deadlock.
 - **The heal gap is two lines, not a missing capability.** `derive_status`
-  computes the discrepancy correctly. `cmd_heal` matches only
-  (`ready`, {`failed`,`blocked`,`planned`}) at `:526` and (`failed`,
-  `in_progress`) at `:533`. The incident pair — (`ready`|`blocked`,
+  computes the discrepancy correctly. `cmd_heal` in `src/aet/cli/aet_state.py` matches only
+  (`ready`, {`failed`,`blocked`,`planned`}) and (`failed`,
+  `in_progress`). The incident pair — (`ready`|`blocked`,
   `in_progress`) — matches neither, so heal reported "No healable discrepancies
   found" against a visibly wrong queue. R-11 adds the rule that consumes what
   heal already computes.

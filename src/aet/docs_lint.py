@@ -6,6 +6,7 @@ checkout. The evaluator never executes rule content.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -21,6 +22,7 @@ VALID_RULE_TYPES = frozenset(
         "path_absent",
         "unique_live_subject",
         "adr_corpus_integrity",
+        "code_anchor_resolves",
     }
 )
 
@@ -375,6 +377,257 @@ def _evaluate_adr_corpus_integrity(
     return violations
 
 
+_LINE_ANCHOR_RE = re.compile(
+    r"""(?x)
+    (?:^|[\s`(\[\"'])
+    (?P<full_match>
+        (?P<target>
+            (?:[a-zA-Z0-9_.\-\/]+\.(?:py|sh|json|yaml|yml|md|toml|html|js|ts|rs|go|c|h|cpp))
+            |
+            (?:Makefile|Dockerfile|Containerfile)
+            |
+            (?:(?:src|skills|aet-work|scripts|docs|tests)/[a-zA-Z0-9_.\-\/]+)
+            |
+            (?:orchestrator|aet-state|queue|pipeline|telemetry|verifier)
+        )
+        :
+        (?P<lines>\d+(?:[-–—]\d+)?(?:,\s*\d+(?:[-–—]\d+)?)*)
+    )
+    (?=[\s`\)\]\"',\.]|$)
+    """
+)
+
+_PROSE_ANCHOR_RE = re.compile(
+    r"""(?x)
+    (?P<symbols>(?:`[a-zA-Z_][a-zA-Z0-9_.]*(?:\(\))?`(?:\s*(?:,|and)\s*)?)+)
+    \s+(?:in|at)\s+
+    `(?P<path>(?:[a-zA-Z0-9_.\-\/]+\.[a-zA-Z0-9]+)|Makefile|Dockerfile)`
+    """
+)
+
+_PAREN_ANCHOR_RE = re.compile(
+    r"""(?x)
+    `(?P<sym>[a-zA-Z_][a-zA-Z0-9_.]*(?:\(\))?)`
+    \s*
+    \((?:in\s+)?`(?P<path>[a-zA-Z0-9_.\-\/]+\.[a-zA-Z0-9]+)`\)
+    """
+)
+
+
+def _extract_target_names(node: ast.AST) -> list[str]:
+    """Extract identifier names from an AST assignment target."""
+    if isinstance(node, ast.Name):
+        return [node.id]
+    if isinstance(node, (ast.Tuple, ast.List)):
+        names: list[str] = []
+        for elt in node.elts:
+            names.extend(_extract_target_names(elt))
+        return names
+    return []
+
+
+def _collect_ast_symbols(node: ast.AST, prefix: str = "") -> set[str]:
+    """Recursively collect defined symbol names from Python AST."""
+    symbols: set[str] = set()
+    for item in getattr(node, "body", []):
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            symbols.add(item.name)
+            if prefix:
+                symbols.add(f"{prefix}.{item.name}")
+            symbols.update(_collect_ast_symbols(item, prefix=f"{prefix}.{item.name}" if prefix else item.name))
+        elif isinstance(item, ast.ClassDef):
+            symbols.add(item.name)
+            if prefix:
+                symbols.add(f"{prefix}.{item.name}")
+            symbols.update(_collect_ast_symbols(item, prefix=f"{prefix}.{item.name}" if prefix else item.name))
+        elif isinstance(item, ast.Assign):
+            for target in item.targets:
+                for name in _extract_target_names(target):
+                    symbols.add(name)
+                    if prefix:
+                        symbols.add(f"{prefix}.{name}")
+        elif isinstance(item, (ast.AnnAssign, ast.AugAssign)):
+            target = getattr(item, "target", None)
+            if target is not None:
+                for name in _extract_target_names(target):
+                    symbols.add(name)
+                    if prefix:
+                        symbols.add(f"{prefix}.{name}")
+        elif isinstance(item, ast.Import):
+            for alias in item.names:
+                name = alias.asname or alias.name
+                symbols.add(name)
+                if prefix:
+                    symbols.add(f"{prefix}.{name}")
+        elif isinstance(item, ast.ImportFrom):
+            for alias in item.names:
+                if alias.asname:
+                    symbols.add(alias.asname)
+                symbols.add(alias.name)
+                if prefix:
+                    if alias.asname:
+                        symbols.add(f"{prefix}.{alias.asname}")
+                    symbols.add(f"{prefix}.{alias.name}")
+    return symbols
+
+
+def _extract_table_anchors(text: str) -> list[tuple[str, str]]:
+    """Extract (symbol, target_module) pairs from markdown tables."""
+    anchors: list[tuple[str, str]] = []
+    lines = text.splitlines()
+    in_table = False
+    symbol_col = -1
+    module_col = -1
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cells = [c.strip() for c in stripped[1:-1].split("|")]
+            if not in_table:
+                lower_cells = [c.lower() for c in cells]
+                sym_indices = [i for i, c in enumerate(lower_cells) if "symbol" in c]
+                mod_indices = [
+                    i
+                    for i, c in enumerate(lower_cells)
+                    if any(k in c for k in ("module", "target", "file", "path"))
+                ]
+                if sym_indices and mod_indices:
+                    in_table = True
+                    symbol_col = sym_indices[0]
+                    module_col = mod_indices[0]
+                    continue
+            else:
+                if all(set(c).issubset({"-", ":", " "}) and c for c in cells):
+                    continue
+                if len(cells) > max(symbol_col, module_col):
+                    sym_cell = cells[symbol_col]
+                    mod_cell = cells[module_col]
+                    raw_syms = re.split(r",", sym_cell)
+                    mod = mod_cell.strip(" `\"'")
+                    mod_tokens = [t.strip(" `\"'") for t in mod.split()]
+                    target_mod = mod_tokens[0] if mod_tokens else ""
+                    if not target_mod:
+                        continue
+                    for raw_s in raw_syms:
+                        s = raw_s.strip(" `\"'()")
+                        if s:
+                            anchors.append((s, target_mod))
+        else:
+            in_table = False
+    return anchors
+
+
+def _extract_prose_anchors(text: str) -> list[tuple[str, str]]:
+    """Extract (symbol, target_module) pairs from prose patterns."""
+    anchors: list[tuple[str, str]] = []
+    for m in _PROSE_ANCHOR_RE.finditer(text):
+        path = m.group("path").strip()
+        if "." in path or "/" in path or path == "Makefile":
+            syms = [
+                s.removesuffix("()")
+                for s in re.findall(r"`([a-zA-Z_][a-zA-Z0-9_.]*(?:\(\))?)`", m.group("symbols"))
+            ]
+            for s in syms:
+                if s:
+                    anchors.append((s, path))
+    for m in _PAREN_ANCHOR_RE.finditer(text):
+        path = m.group("path").strip()
+        sym = m.group("sym").removesuffix("()").strip()
+        if sym and ("." in path or "/" in path or path == "Makefile"):
+            anchors.append((sym, path))
+    return anchors
+
+
+def _check_doc_code_anchors(text: str, reason: str, repo_root: Path) -> list[str]:
+    """Check code anchors within a single markdown document."""
+    stripped = strip_lint_escapes(text)
+    violations: list[str] = []
+
+    # 1. Line anchor checks
+    for m in _LINE_ANCHOR_RE.finditer(stripped):
+        full_match = m.group("full_match")
+        violations.append(f"{reason} (line anchor forbidden: '{full_match}')")
+
+    # 2. Table and prose symbol anchors
+    anchors = _extract_table_anchors(stripped) + _extract_prose_anchors(stripped)
+
+    seen: set[tuple[str, str]] = set()
+    unique_anchors: list[tuple[str, str]] = []
+    for a in anchors:
+        if a not in seen:
+            seen.add(a)
+            unique_anchors.append(a)
+
+    for symbol, target_path_str in unique_anchors:
+        target_path = Path(target_path_str)
+        if not target_path.is_absolute():
+            resolved_target = repo_root / target_path
+        else:
+            resolved_target = target_path
+
+        if not resolved_target.exists() or resolved_target.is_dir():
+            violations.append(f"{reason} (anchored file does not exist: '{target_path_str}')")
+            continue
+
+        if resolved_target.suffix == ".py":
+            try:
+                tree = ast.parse(resolved_target.read_text(encoding="utf-8"))
+                py_symbols = _collect_ast_symbols(tree)
+            except Exception as exc:
+                violations.append(
+                    f"{reason} (cannot parse Python file '{target_path_str}': {exc})"
+                )
+                continue
+            if symbol not in py_symbols and ("." not in symbol or symbol.split(".")[-1] not in py_symbols):
+                violations.append(
+                    f"{reason} (symbol '{symbol}' does not resolve in '{target_path_str}')"
+                )
+        else:
+            try:
+                content = resolved_target.read_text(encoding="utf-8")
+            except Exception as exc:
+                violations.append(f"{reason} (cannot read file '{target_path_str}': {exc})")
+                continue
+            if symbol not in content:
+                violations.append(
+                    f"{reason} (symbol '{symbol}' not found in '{target_path_str}' (occurrence matching))"
+                )
+
+    return violations
+
+
+def _evaluate_code_anchor_resolves(
+    target_path: Path, reason: str, repo_root: Path
+) -> list[tuple[Path, str]]:
+    """Evaluate the ``code_anchor_resolves`` rule against *target_path*."""
+    violations: list[tuple[Path, str]] = []
+
+    if target_path.is_dir():
+        md_files = sorted(target_path.rglob("*.md"))
+        if not md_files:
+            rel = _relative(target_path, repo_root)
+            return [(rel, f"{reason} (no markdown files found in directory: {rel})")]
+    elif target_path.is_file():
+        md_files = [target_path]
+    else:
+        rel = _relative(target_path, repo_root)
+        return [(rel, f"{reason} (target path missing: {rel})")]
+
+    for md_path in md_files:
+        rel = _relative(md_path, repo_root)
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            violations.append((rel, f"{reason} (cannot read file: {exc})"))
+            continue
+
+        doc_violations = _check_doc_code_anchors(text, reason, repo_root)
+        for msg in doc_violations:
+            violations.append((rel, msg))
+
+    return violations
+
+
 def _validate_rule(raw: object, index: int) -> dict:
     """Validate and normalize a single rule mapping."""
     if not isinstance(raw, dict):
@@ -390,7 +643,7 @@ def _validate_rule(raw: object, index: int) -> dict:
         if "value" not in rule:
             raise RuleError(index, f"'value' is required for {rtype}")
         rule["value"] = _normalize_values(rule["value"])
-    if rtype in ("unique_live_subject", "adr_corpus_integrity") and "value" in rule:
+    if rtype in ("unique_live_subject", "adr_corpus_integrity", "code_anchor_resolves") and "value" in rule:
         raise RuleError(index, f"'value' is not allowed for {rtype}")
     severity = rule.get("severity", "error")
     if severity not in ("error", "warning"):
@@ -489,6 +742,13 @@ def lint_docs(
                 violations.append((rel_target, f"{reason} (target must be a directory: {target})"))
             else:
                 violations.extend(_evaluate_adr_corpus_integrity(target_path, reason, repo_root))
+            continue
+
+        if rtype == "code_anchor_resolves":
+            if not target_path.exists():
+                violations.append((rel_target, f"{reason} (target path missing: {target})"))
+            else:
+                violations.extend(_evaluate_code_anchor_resolves(target_path, reason, repo_root))
             continue
 
         if target_path.is_dir() and rtype in ("must_contain", "must_not_contain"):

@@ -88,7 +88,7 @@ Each carries the trigger that would re-open it, so none of these is vapor.
 
 - **R-6**: `status` is a required, validated plan frontmatter field over the canonical lifecycle `draft → approved → queued → in_progress → awaiting_merge → merged|abandoned` (CONTEXT.md), written as `status: draft` at plan creation and advanced to `approved` by `aet-validate-scope` (the approval gate). A plan with no `status` field is treated as settled, grandfathering the legacy corpus. "Live" means: has a `status` field, and it is not terminal.
 - **R-7**: Settled-ness is derived from versioned plan data, not from the gitignored `.agents/work-history.jsonl`, resolving the contradiction between ADR-013 decision 3 and `init-queue:257`.
-- **R-8**: Every command that writes plan status commits **and pushes** it — `aet add`, `aet sprint`, and `record-merge`. Today `record-merge` commits (`aet-state:889`) and stops; only `aet-ship`'s prose pushes, so desk-driven closure leaves `status: merged` local-only. A push failure is surfaced and recoverable; it never loses the local commit or half-closes the task.
+- **R-8**: Every command that writes plan status commits **and pushes** it — `aet add`, `aet sprint`, and `record-merge`. Today `record-merge` commits (`cmd_record_merge` in `src/aet/cli/aet_state.py`) and stops; only `aet-ship`'s prose pushes, so desk-driven closure leaves `status: merged` local-only. A push failure is surfaced and recoverable; it never loses the local commit or half-closes the task.
 - **R-9**: Queue membership is derived from committed plan status, not curated in a local-only file. After a `git pull`, `aet run` selects the same work in any clone.
 
 ### The commands
@@ -166,8 +166,8 @@ Each carries the trigger that would re-open it, so none of these is vapor.
 | `close_task()` | Wired via `bin/aet-state:323`. Closes by `github_issue_number`, which only `_create_issue` (dead) ever sets. |
 | `GitHubBackend.load/save` | Read/write `self.queue_file` — the **local JSON queue**. Nothing is stored in GitHub. `task_backend: "github"` means "JSON storage plus labels". |
 | `task_backend: "both"` | `raise NotImplementedError("Composite backend is not yet implemented")`. |
-| Closure push | `git push` appears **only** in `aet-ship/SKILL.md` prose — no Python binary pushes. `record-merge` commits at `aet-state:889` and stops. |
-| `ready` is computed | `aet-state:309` releases dependents on closure: `append_history(dep, dep_state, "ready", "release")`. `pending_blockers` falls back to `len(blocked_by)`. Confirms R-12. |
+| Closure push | `git push` appears **only** in `aet-ship/SKILL.md` prose — no Python binary pushes. `record-merge` commits in `cmd_record_merge` (`src/aet/cli/aet_state.py`) and stops. |
+| `ready` is computed | `cmd_transition` (`src/aet/cli/aet_state.py`) releases dependents on closure: `append_history(dep, dep_state, "ready", "release")`. `pending_blockers` falls back to `len(blocked_by)`. Confirms R-12. |
 | Config resolution | Already external-first (`ewl-07`): `AET_WORK_CONFIG` → `~/.aet/{slug}/config.json` → in-tree → defaults. The projection axis rides this unchanged. |
 
 ### The corpus census — why R-6 exists

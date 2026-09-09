@@ -2,7 +2,7 @@
 
 ## Overview
 
-R-19 (`open-work-board-prd.md:47`) made the task record carry the plan's spec
+R-19 (`docs/prds/open-work-board-prd.md`) made the task record carry the plan's spec
 "rather than a path to a file", and the glossary settled it: "after R-19 no plan
 file need exist on the machine that runs it". The producer side was migrated —
 `render_task_plan` writes the worktree plan from the record, `derive_queue`
@@ -14,9 +14,9 @@ those consumers, all of them fail open and silently. The measured damage:
 
 | Consumer | Symptom | Evidence |
 | --- | --- | --- |
-| `aet ship` ×5 entry points | Refuses to run: `⛔ Plan not found … Pass the full plan path` | `docs/bugs/20260819-…` (open); `ship.py:329,541,799,886,1113` |
+| `aet ship` ×5 entry points | Refuses to run: `⛔ Plan not found … Pass the full plan path` | `docs/bugs/20260819-…` (open); `src/aet/cli/ship.py` |
 | R-5 plan archive | `archived_to: null` on every post-R-19 `land` event | 56 land events; every success is pre-R-19 or a test fixture |
-| `aet metrics` declared size | `None` for **368 of 368** settled records | `metrics.py:338` → `except OSError: return None` |
+| `aet metrics` declared size | `None` for **368 of 368** settled records | `src/aet/metrics.py` → `except OSError: return None` |
 
 This PRD does not add a fallback. A fallback would preserve the two
 representations that caused the divergence. It completes the R-19 migration by
@@ -80,13 +80,13 @@ The lifecycle has one source of truth per phase and one explicit handoff:
   R-6 reports full coverage.
 - **R-8**: Skills are audited for the phase model. Every `docs/plans` reference
   is classified authoring (correct) or post-intake (stale) and corrected —
-  19 files across 12 skills, including `aet-ship/SKILL.md:31`.
+  19 files across 12 skills, including `skills/aet-ship/SKILL.md`.
 - **R-9**: A consumer that cannot resolve a spec fails closed with the task id
   named. No consumer treats an absent spec as an empty or default value.
 - **R-10**: `CONTEXT.md`'s glossary states the post-intake model. The **Task**,
   **Plan File**, **Work Queue** and **Settled-ness Authority** entries are
   corrected to match the code, discharging the obligation
-  `open-work-board-prd.md:161` recorded and did not fulfil.
+  `docs/prds/open-work-board-prd.md` recorded and did not fulfil.
 
 ## User Stories
 
@@ -129,7 +129,7 @@ The lifecycle has one source of truth per phase and one explicit handoff:
 
 ## Technical Notes
 
-**The correct pattern already exists in the codebase.** `aet_state.py:1253-1275`
+**The correct pattern already exists in the codebase.** `src/aet/cli/aet_state.py`
 (`cmd_record_merge`) loads the task by id from the queue, falls back to the
 sealed record in `work-history.jsonl`, and handles the settled case
 idempotently. Its comment cites R-4 and R-19 by name. R-2 and R-4 extract that
@@ -146,23 +146,23 @@ abstraction, it is deduplicating an existing correct one.
 **Three pieces of accidental complexity delete themselves**, which is the signal
 this removes a layer rather than adding one:
 
-- `_task_id_from_plan` (`ship.py:103`) round-trips id → path → filename stem →
+- Formerly `_task_id_from_plan` in ship operations round-trips id → path → filename stem →
   id, existing only because the id is discarded at the front door.
 - `_scope_audit` excludes the plan file from the changed-paths diff
-  (`ship.py:582`) — dead post-R-19, the plan is not in the diff.
+  (`src/aet/cli/ship.py`) — dead post-R-19, the plan is not in the diff.
 - `_build_pr_body` and `_generate_changelog_entry` emit `Plan: [name](path)`
   links to a file R-19 says need not exist. Every PR body carries a dead link.
 
-**R-5 is half-landed, not merely broken.** `open-work-board-prd.md:45` requires
+**R-5 is half-landed, not merely broken.** `docs/prds/open-work-board-prd.md` requires
 "a one-time copy of the 264 legacy files so historical metrics survive without a
 second read path". That migration never ran: `~/.aet/` contains no `plans/`
-directory. Its acceptance criterion (line 107) is still unchecked. This is the
+directory. Its acceptance criterion is still unchecked. This is the
 exact hazard ADR-058 names — populate before removing — so R-6 strictly precedes
 R-7. The 264 files in `docs/plans/archive/` are today the only surviving source
 of declared size for 360 pre-R-19 records; only 8 of 368 settled records carry
 `spec.frontmatter.size`.
 
-**Why the archive is retired rather than repaired.** `metrics.py:339` reads
+**Why the archive is retired rather than repaired.** `src/aet/metrics.py` reads
 exactly one thing from a settled plan: `parse_frontmatter(plan_path)`. The
 record's `spec.frontmatter` carries those fields structurally. A rendered
 archive would be a second serialization of data the record already holds — the
@@ -175,8 +175,8 @@ expected to be authoring-phase and therefore correct, but that cannot be claimed
 without R-1's audit. This is why the three known consumers are the audit's floor
 and not its scope.
 
-**Settled-ness was verified, not assumed.** `CONTEXT.md:43` describes
-`_is_settled_from_authority` in `src/aet/cli/init_queue.py` reading three inputs,
+**Settled-ness was verified, not assumed.** `CONTEXT.md` describes
+a historical `_is_settled_from_authority` reader in `init_queue.py` reading three inputs,
 one of them a plan-file footer that R-19 makes impossible. Neither the function,
 the module, nor the `aet init-queue` command exists. What actually answers "is it
 done?" is the sealed history log: `aet queue sync` reports "skipped (already
@@ -185,7 +185,7 @@ settled)" from `work-history.jsonl`, and its `--plans-dir` option is documented
 is already a task record, which is what R-4 and R-7 rest on. `CONTEXT.md` is the
 only thing still describing the old model — hence R-10.
 
-**`is_settled_plan` carries a dead branch.** `plan_parser.py:194` still reads
+**`is_settled_plan` carries a dead branch.** `src/aet/plan_parser.py` (`is_settled_plan`) still reads
 `status` frontmatter, which ADR-055 removed from the contract and `plans lint`
 now rejects. Its callers are all phase-1 lint tools and are out of scope here,
 but R-1's audit should record it.
@@ -201,6 +201,7 @@ The audit covered `src/aet/`, `src/aet/panel/`, `reports/`, `scripts/`, `skills/
 and `docs/plans/archive/`. The three consumers known at planning time are the
 floor of this register, not its ceiling.
 
+<!-- aet-lint: off -->
 ### Stale post-intake consumers
 
 | File | Line(s) | Consumer | Replacement field | Notes |
@@ -216,39 +217,40 @@ floor of this register, not its ceiling.
 | `src/aet/plan_parser.py` | 423–429 | `task_routing_data` fallback | `spec.frontmatter` | Shared helper used by post-intake consumers |
 | `src/aet/worktree.py` | 456–462 | `render_task_plan` fallback | `spec` | Already renders from spec; copy fallback is stale |
 | `src/aet/cli/next.py` | 37–39 | `derive_queue` fallback | `spec` presence | Spec should be required; file-existence fallback is stale |
+<!-- aet-lint: on -->
 
 ### Authoring-phase consumers (correct)
 
 These read `docs/plans/<id>.md` before intake and remain correct after R-19:
 
-- `src/aet/plan_parser.py:145` `title_from_plan`, `:160` `build_ticket_map`,
-  `:173` `stage_from_plan`, `:194` `is_settled_plan`, `:211`
-  `references_other_plans`, `:265` `most_recent_plan`, `:442`
-  `new_task_from_plan`, `:640` `resolve_plan_arg`
-- `src/aet/plans_lint.py:150` `lint_floor`, `:223` `lint_corpus`
-- `src/aet/plan_validate.py` corpus validation
-- `src/aet/cli/context.py:213` `_plan_files` etc. (operator context inspection)
-- `src/aet/cli/sprint.py:37` `resolve_plan`, `_add`, `_intake` (intake)
-- `src/aet/cli/backlog.py:29` `resolve_plan`, `_add` (backlog intake)
-- `src/aet/cli/plan.py:44` `cmd_validate`
-- `src/aet/cli/orchestrator.py:3146` `run_single` (run-one intake handoff)
+- `src/aet/plan_parser.py` (`title_from_plan`, `build_ticket_map`,
+  `stage_from_plan`, `is_settled_plan`,
+  `references_other_plans`, `most_recent_plan`,
+  `new_task_from_plan`, `resolve_plan_arg`)
+- `src/aet/plans_lint.py` (`lint_floor`, `lint_corpus`)
+- `src/aet/plan_validate.py` (corpus validation)
+- `src/aet/cli/context.py` (`_plan_files` etc. operator context inspection)
+- `src/aet/cli/sprint.py` (`resolve_plan`, `_add`, `_intake`)
+- `src/aet/cli/backlog.py` (`resolve_plan`, `_add`)
+- `src/aet/cli/plan.py` (`cmd_validate`)
+- `src/aet/cli/orchestrator.py` (`run_single` run-one intake handoff)
 
 ### `docs/plans/archive/` consumers
 
 The archive is still referenced outside the package and must be retired under
 R-7:
 
-- `docs/CONVENTIONS.md:217`
-- `docs/releases/v1.8.0.md:58`
+- `docs/CONVENTIONS.md`
+- `docs/releases/v1.8.0.md`
 - `docs/diagrams/plan-task-lifecycle.*`
-- `docs/adr/061-the-record-is-the-plan-after-intake.md:77–78`
-- `docs/prds/structural-review-tier-2-prd.md:38,171,175,177`
-- `docs/prds/open-work-board-prd.md:31,45`
+- `docs/adr/061-the-record-is-the-plan-after-intake.md`
+- `docs/prds/structural-review-tier-2-prd.md`
+- `docs/prds/open-work-board-prd.md`
 - `docs/prds/the-record-is-the-plan-prd.md` (this PRD)
-- `scripts/validate-skills.sh:195–197`
+- `scripts/validate-skills.sh`
 - `scripts/archive/migrate-plan-archive.py`
-- `src/aet/plans_lint.py:4` docstring
-- `src/aet/telemetry.py:163–175` `plans_archive_dir`
+- `src/aet/plans_lint.py` docstring
+- `src/aet/telemetry.py` (`plans_archive_dir`)
 
 ### Sibling-scope statement
 

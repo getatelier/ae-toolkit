@@ -148,7 +148,7 @@ agent is left with one literal command and no parameters to select.
       limit (satisfies: R-4)
 - [ ] With the pid file deleted and no returncode file present, the wait path exits non-zero
       rather than looping (satisfies: R-5)
-- [ ] `output.log` is non-empty and complete for a detached run, and usage parsing yields
+- [ ] The run `output.log` is non-empty and complete for a detached run, and usage parsing yields
       non-null usage for the `json-envelope` and `wire-file` adapters, asserted by a test per
       adapter (satisfies: R-6)
 - [ ] `CLIAdapter` exposes stall and wall timeout fields, and the orchestrator watchdog reads
@@ -178,44 +178,44 @@ agent is left with one literal command and no parameters to select.
 ## Technical Notes
 
 **Detachment and blocking are independent axes.** The orchestrator already spawns detached
-with `start_new_session=True` (`src/aet/cli/main.py:255-280`), writing `output.log`, `pid`,
+with `start_new_session=True` (`src/aet/cli/main.py`), writing the run log, `pid`,
 and `returncode` into `.agents/runs/<run-id>/`. R-1 removes the *other* mode
-(`--foreground` → `_exec_orchestrator`, `main.py:246-252`), in which the orchestrator runs as
+(`--foreground` in `src/aet/cli/main.py`), in which the orchestrator runs as
 the session's own process and `_run_with_live_tee` mirrors every line to stdout
-(`src/aet/cli/orchestrator.py:846`). R-2 then makes the default command wait on the already-
+(`src/aet/cli/orchestrator.py`). R-2 then makes the default command wait on the already-
 detached process. Nothing about where the process runs changes; only the caller's behavior
 after spawning does.
 
 **The follower already waits correctly; it observes too loudly.** `_follow_run`
-(`main.py:152-196`) already terminates on both pid death and the returncode file — the
+(`src/aet/cli/main.py`) already terminates on both pid death and the returncode file — the
 supervision logic is sound. Its cost is that it replays the log from byte zero
-(`main.py:163-166`) and echoes every subsequent line (`main.py:184`). R-3 replaces the
+and echoes every subsequent line. R-3 replaces the
 output, not the waiting. R-5 covers the one genuine gap: when `pid` is `None` and no
-returncode file exists, the loop at `main.py:181-196` has no exit condition.
+returncode file exists, the loop has no exit condition.
 
 **The tee must not be "optimized" — it is the log writer.** `_run_with_live_tee`
-(`orchestrator.py:783-860`) echoes each line to stdout and accumulates a bounded tail
-(`orchestrator.py:848-851`). In detached mode the orchestrator's stdout *is* `output.log`
-(`main.py:265-274`), so that echo is what produces the log file. Once `--foreground` is gone
+(`src/aet/cli/orchestrator.py`) echoes each line to stdout and accumulates a bounded tail.
+In detached mode the orchestrator's stdout is redirected to `output.log`
+by `src/aet/cli/main.py`, so that echo is what produces the log file. Once `--foreground` is gone
 (R-1), the echo has no path to an agent's context at all, and silencing it would empty the
 log while breaking claude's usage parsing — claude's usage arrives on stdout as a JSON
 envelope read from the tail, whereas kimi's is read post-exit from `~/.kimi-code` session
-wire files (`src/aet/cli_adapter.py:59-77`). That asymmetry would present as "claude token
+wire files (`src/aet/cli_adapter.py`). That asymmetry would present as "claude token
 capture broken" and be easy to misattribute to
 `tap-07-claude-token-capture-verification`. R-6 is therefore a *non-change* requirement with
 a regression test per adapter: the token win comes entirely from the follower (R-3), not
 from suppressing run output.
 
-**Supervision defaults belong on the adapter.** `CLIAdapter` (`cli_adapter.py:17-33`) is a
+**Supervision defaults belong on the adapter.** `CLIAdapter` (`src/aet/cli_adapter.py`) is a
 frozen dataclass with two entries. Adding timeout fields is passive data: `build_cmd` is
 untouched, so neither CLI's invocation string changes, and the watchdog
-(`orchestrator.py:819-836`) reads the values instead of a caller-supplied flag defaulting to
-300 seconds (`orchestrator.py:787`). That 300-second default is the direct cause of the QA
+(`src/aet/cli/orchestrator.py`) reads the values instead of a caller-supplied flag defaulting to
+300 seconds. That 300-second default is the direct cause of the QA
 stage being killed during a full suite.
 
 **This PRD reverses one prior decision and recalibrates another.** `--foreground` was not an
 accident: `docs/plans/nc-06-run-daemonization.md` task 4 added it deliberately as a debugging
-affordance when `run` was daemonized, and `.agents/commands/aet-work.md:38,44,49` documents
+affordance when `run` was daemonized, and `.agents/commands/aet-work.md` documents
 it. R-1 reverses that, on the grounds that the debugging value is now served by the on-disk
 log (R-12) at no risk of flooding an agent's context. Separately, the 300-second stall
 default is ADR-031 decision item 2, chosen deliberately — so R-8 is a recalibration of a
@@ -236,13 +236,14 @@ expresses what the operator wanted, it belongs on the surface.
 tuning* versus *what work is being done*. `--base` falls on the semantic side: under
 `single-pr` integration mode it names the per-epic integration branch, and the `aet-work`
 skill documents it explicitly as "a per-run input, not a config value"
-(`skills/aet-work/SKILL.md:144-150`). Removing it would break `single-pr` epic
+(`skills/aet-work/SKILL.md`). Removing it would break `single-pr` epic
 integration outright. It also cannot move onto `CLIAdapter` like the timeouts, since it
 varies per run rather than per provider. Any later cleanup that sweeps up "remaining run
 flags" must preserve it.
 
-**The plan-id resolver already exists three times.** `ship.py:186 _resolve_plan_arg` has the
-exact semantics wanted, alongside near-duplicates at `sprint.py:32` and `backlog.py:28`.
+**The plan-id resolver already exists three times.** Formerly duplicated across commands,
+`resolve_plan_arg` in `src/aet/plan_parser.py` has the exact semantics wanted, alongside
+near-duplicates in `src/aet/cli/sprint.py` and `src/aet/cli/backlog.py`.
 R-11 extracts one implementation rather than adding a fourth.
 
 **Human observation needs no new flag.** With the log path printed at start (R-12), a human

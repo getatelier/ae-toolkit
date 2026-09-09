@@ -3,23 +3,22 @@
 ## Overview
 
 `aet run` currently refuses to start unless every queued plan is committed
-and pushed to origin. Two gates enforce this: `aet sprint add` calls
-`commit_and_push_status` unconditionally (`src/aet/cli/sprint.py:172`,
-`src/aet/queue.py:685`) — so even `--allow-untracked` (`sprint.py:127`) ends
-up publishing the plan — and `check_base_hygiene` (`src/aet/worktree.py:445`)
+and pushed to origin. Two gates enforce this: `aet sprint add` called
+`commit_and_push_status` unconditionally (`add` in `src/aet/cli/sprint.py`) —
+so even `--allow-untracked` ends up publishing the plan — and `check_base_hygiene` (`src/aet/worktree.py`)
 halts the run on any untracked `docs/plans/*.md` ("Working tree is dirty") or
 on local main being ahead of origin.
 
 Codebase verification (2026-08-05) shows the strictness is protecting against
 a failure the toolkit can now handle directly. `copy_untracked_files`
-(`src/aet/worktree.py:255`, called at `src/aet/cli/orchestrator.py:1226`)
+(`src/aet/worktree.py`, called in `src/aet/cli/orchestrator.py`)
 already mirrors untracked planning docs into the task worktree before the
-plan-existence check; the verdict `tree_hash` (`src/aet/verifier.py:81-121`)
+plan-existence check; the verdict `tree_hash` (`working_tree_hash` in `src/aet/verifier.py`)
 stages untracked files via `git add -A`, so evidence is unaffected; the
 worktree copy of the plan is the operative document during the run
-(`orchestrator.py:1257,1282`); and no code reads plan content through git
+(in `src/aet/cli/orchestrator.py`); and no code reads plan content through git
 objects or origin refs. The push requirement is a plumbing constraint —
-worktrees base off `origin/<ref>` (`orchestrator.py:2438,2855`) — wearing a
+worktrees base off `origin/<ref>` (in `src/aet/cli/orchestrator.py`) — wearing a
 durability costume.
 
 This PRD makes local-only plans **the behavior**, not an opt-in mode, scoped
@@ -93,16 +92,16 @@ toggle spans 13 files: 4 source, 9 test).
   unchanged concern and keeps its own list.
 - **R-2**: Queue intake (`aet sprint add`, `aet backlog`) writes plan status
   to the file only — no `git add`, commit, or push. The gate is applied at
-  the single choke point `commit_and_push_status` (`src/aet/queue.py:685`),
+  the single choke point `write_queue` (`src/aet/queue.py`),
   not at each caller. Because that function serves both intake
   (`status: queued`) and closure (`status: merged`,
-  `src/aet/cli/aet_state.py:1118`) over the same paths, the gate keys on
+  `cmd_record_merge` in `src/aet/cli/aet_state.py`) over the same paths, the gate keys on
   **status terminality, not path alone**: for a path in the R-1 set, commit
   and push only when the status is terminal (`merged`, `abandoned`);
   otherwise write the file and return. This is the ADR-034 revision expressed
   in code — mid-sprint status is local, settled status is durable. The
-  untracked-plan refusal at `sprint.py:127` and its `--allow-untracked`
-  escape hatch are removed: an untracked plan is now the normal case.
+  untracked-plan refusal and its `--allow-untracked`
+  escape hatch in `src/aet/cli/sprint.py` are removed: an untracked plan is now the normal case.
 - **R-3**: Worktree materialization syncs the working-tree version of the
   task's plan into the worktree regardless of git state — untracked,
   tracked-but-modified, or tracked-but-absent-from-base — replacing
@@ -121,14 +120,14 @@ toggle spans 13 files: 4 source, 9 test).
   integration branch (checked with `git cat-file -e <integration>:<path>`),
   so a plan carried by an unpushed local commit under R-4(b) cannot produce
   an add/add conflict at merge. Merge closure then updates plan status as
-  today (`src/aet/cli/aet_state.py:1118`).
+  today (`cmd_record_merge` in `src/aet/cli/aet_state.py`).
 - **R-6**: Closure never silently skips the final plan commit. The current
-  guard (`aet_state.py:1119`) skips `commit_and_push_status` when the plan
+  guard in `cmd_record_merge` (`src/aet/cli/aet_state.py`) skips `commit_and_push_status` when the plan
   path is absent from disk yet still prints "Recorded merge" and returns 0.
   If the plan file cannot be resolved from the checkout or the merged branch,
   closure fails closed and names the fix.
 - **R-7**: Worktree cleanup ignores a plan-only commit when deciding whether
-  a worktree is empty. `remove_worktree` (`src/aet/worktree.py:157-181`)
+  a worktree is empty. `remove_worktree` (`src/aet/worktree.py`)
   currently removes only when `rev-list --count <base>..HEAD` is 0; R-5
   guarantees at least one commit, so the emptiness test must exclude commits
   whose diff touches only the R-1 path set, or worktrees will accumulate
@@ -226,22 +225,24 @@ toggle spans 13 files: 4 source, 9 test).
   analyses corrected): `copy_untracked_files` runs before the plan-existence
   check, so untracked plans already reach the worktree — the blockers are
   intake's forced commit+push and the hygiene dirty check, not worktree
-  visibility. `working_tree_hash` (`verifier.py:81-121`) seeds a temp index
+  visibility. `working_tree_hash` in `src/aet/verifier.py` seeds a temp index
   from HEAD and runs `git add -A`, so untracked files are included and
-  evidence is unaffected. `enforce_base_hygiene` (`orchestrator.py:324-339`)
+  evidence is unaffected. `enforce_base_hygiene` in `src/aet/cli/orchestrator.py`
   is fail-closed in both execution modes — the 2026-07-14 learning about
   unattended warn-and-continue is outdated. No code reads plan content via
   `git show`/`cat-file`/origin refs.
+<!-- aet-lint: off -->
 - **Single choke points**: durability gating happens in
-  `commit_and_push_status` (`queue.py:685`) and `check_base_hygiene`
-  (`worktree.py:445`); materialization in the successor of
-  `copy_untracked_files` (`worktree.py:255`); cleanup in `remove_worktree`
-  (`worktree.py:157`). Callers (`sprint.py`, `backlog.py`, `aet_state.py`,
-  `orchestrator.py`) stay ignorant of the rule.
+  `commit_and_push_status` (`src/aet/queue.py`) and `check_base_hygiene`
+  (`src/aet/worktree.py`); materialization in the successor of
+  `copy_untracked_files` (`src/aet/worktree.py`); cleanup in `remove_worktree`
+  (`src/aet/worktree.py`). Callers (`src/aet/cli/sprint.py`, `src/aet/cli/backlog.py`, `src/aet/cli/aet_state.py`,
+  `src/aet/cli/orchestrator.py`) stay ignorant of the rule.
 - **Closure ordering**: closure runs from the main checkout after merge
-  (`aet_state.py:966-969`), so R-5's seeded commit guarantees the plan file
+  (`cmd_record_merge` in `src/aet/cli/aet_state.py`), so R-5's seeded commit guarantees the plan file
   exists on the integration branch for the final status update. R-6 covers
   the residual hole.
+<!-- aet-lint: on -->
 - **R-5 commit hygiene**: the worktree contains untracked PRDs/ADRs mirrored
   by `copy_untracked_files`, so the seeding commit must stage an explicit
   path. A bare `git add -A` or `git commit -a` would sweep them into the PR.
@@ -266,11 +267,11 @@ toggle spans 13 files: 4 source, 9 test).
   commit, not folded into the first implementation commit. It gives the PR a
   clean narrative and makes R-7's emptiness classification trivial.
 - **`single-pr` epic mode (ADR-045)** — resolved: no special case needed. Both
-  hygiene call sites (`orchestrator.py:2443`, `:2859`) already pass
+  hygiene call sites in `src/aet/cli/orchestrator.py` already pass
   `integration.ref`, so epic mode inherits the R-4 narrowing unchanged. One
   latent defect surfaced and was folded into `lop-02` task 3:
-  `create_worktree`'s rebase-recovery calls `remove_worktree` at
-  `worktree.py:76` without forwarding its `base_branch`, so the emptiness
+  `create_worktree`'s rebase-recovery calls `remove_worktree` in
+  `src/aet/worktree.py` without forwarding its `base_branch`, so the emptiness
   predicate is evaluated against `origin/main` under a non-trunk integration
   branch.
 - **`content/backlog/` and `docs/bugs/`** — resolved: out of scope, no change.

@@ -259,6 +259,24 @@ The `dcl-02` implementation slice (R-1, R-5) matches the planned behavior.
 
 - **Task 7 (Merge to main):** Merging to main and integration verification deferred to `aet-ship`.
 
+## Divergence Summary — dcl-05
+
+*Recorded: 2026-09-09 — Branch: dcl-05-code-anchor-rule-and-sweep*
+
+The `dcl-05` implementation slice (R-3, R-5, R-6) matches the planned behavior.
+
+### Changed from plan
+
+- None.
+
+### Added (unplanned)
+
+- None.
+
+### Deferred
+
+- **Task 8 (Merge to main):** Merging to main and integration verification deferred to `aet-ship`.
+
 ---
 
 *Stage: synced*
