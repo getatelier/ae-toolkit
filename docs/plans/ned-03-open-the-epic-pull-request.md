@@ -100,25 +100,25 @@ of the declared PR title.
 
 ## Validation Steps
 
-- [ ] Lint passes
-- [ ] Tests pass
-- [ ] R-trace coverage: R-10 (tasks 2, 4), R-11 (task 5), R-12 (task 1), R-13
+- [x] Lint passes
+- [x] Tests pass
+- [x] R-trace coverage: R-10 (tasks 2, 4), R-11 (task 5), R-12 (task 1), R-13
       (task 3)
-- [ ] New source files: none. `cmd_open_epic` lands in `src/aet/cli/ship.py`
+- [x] New source files: none. `cmd_open_epic` lands in `src/aet/cli/ship.py`
       beside `cmd_open` and is covered by a new `tests/ship/test_open_epic.py`
-- [ ] Unit test: with no active epic and no argument, the command exits non-zero
+- [x] Unit test: with no active epic and no argument, the command exits non-zero
       and names `aet epic set`
       (`tests/ship/test_open_epic.py::test_no_active_epic_fails_closed`)
-- [ ] Unit test: an epic declared without a title produces a PR title equal to
+- [x] Unit test: an epic declared without a title produces a PR title equal to
       the branch name, and a body listing the integrated commit subjects
       (`::test_title_defaults_to_branch_name_and_body_to_commit_subjects`)
-- [ ] Unit test: a declared title and body file reach `gh pr create` verbatim
+- [x] Unit test: a declared title and body file reach `gh pr create` verbatim
       (`::test_declared_title_and_body_are_used`)
-- [ ] Integration test: a successful run leaves exactly one PR against the
+- [x] Integration test: a successful run leaves exactly one PR against the
       resolved trunk, and a second invocation prints that PR's URL and exits
       zero without a second `gh pr create`
       (`::test_second_invocation_reports_the_existing_pr`)
-- [ ] Integration test: a failing gate exits non-zero and creates no PR
+- [x] Integration test: a failing gate exits non-zero and creates no PR
       (`::test_gate_failure_creates_no_pr`)
 - [ ] Merge verified: `git merge-base --is-ancestor HEAD origin/main`
 
