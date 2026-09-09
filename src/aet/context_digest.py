@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -35,6 +35,17 @@ class AdrEntry:
     number: int | None
     subject: str
     supersedes: list[int]
+    relates: list[int] = field(default_factory=list)
+
+
+@dataclass
+class AdrCorpusReport:
+    """Integrity and resolution audit of an ADR corpus."""
+
+    duplicate_numbers: dict[int, list[str]]
+    dangling_supersedes: dict[str, list[int]]
+    dangling_relates: dict[str, list[int]]
+    superseded_relates: dict[str, list[int]]
 
 
 def _adr_number(stem: str) -> int | None:
@@ -46,7 +57,7 @@ def _adr_number(stem: str) -> int | None:
 
 
 def _coerce_supersedes(value: Any) -> list[int]:
-    """Normalize a ``supersedes:`` frontmatter value to a list of ints."""
+    """Normalize a ``supersedes:`` or ``relates:`` frontmatter value to a list of ints."""
     if value is None:
         return []
     items = value if isinstance(value, list) else [value]
@@ -66,6 +77,43 @@ def _coerce_supersedes(value: Any) -> list[int]:
     return numbers
 
 
+def audit_adr_entries(entries: list[AdrEntry]) -> AdrCorpusReport:
+    """Audit ADR entries for duplicate numbers, dangling references, and superseded targets."""
+    by_number: dict[int, list[str]] = {}
+    for entry in entries:
+        if entry.number is not None:
+            by_number.setdefault(entry.number, []).append(entry.stem)
+
+    duplicate_numbers = {num: stems for num, stems in by_number.items() if len(stems) > 1}
+    all_numbers = set(by_number.keys())
+
+    # A number is superseded if any entry names it in supersedes
+    superseded_numbers = {
+        n for entry in entries for n in entry.supersedes if n in all_numbers
+    }
+
+    dangling_supersedes: dict[str, list[int]] = {}
+    dangling_relates: dict[str, list[int]] = {}
+    superseded_relates: dict[str, list[int]] = {}
+
+    for entry in entries:
+        for n in entry.supersedes:
+            if n not in all_numbers:
+                dangling_supersedes.setdefault(entry.stem, []).append(n)
+        for n in entry.relates:
+            if n not in all_numbers:
+                dangling_relates.setdefault(entry.stem, []).append(n)
+            elif n in superseded_numbers:
+                superseded_relates.setdefault(entry.stem, []).append(n)
+
+    return AdrCorpusReport(
+        duplicate_numbers=duplicate_numbers,
+        dangling_supersedes=dangling_supersedes,
+        dangling_relates=dangling_relates,
+        superseded_relates=superseded_relates,
+    )
+
+
 def read_adr_entries(adr_dir: Path) -> list[AdrEntry]:
     """Read digest entries from ``adr_dir``; ADRs without ``subject:`` are excluded."""
     if not adr_dir.is_dir():
@@ -82,6 +130,7 @@ def read_adr_entries(adr_dir: Path) -> list[AdrEntry]:
                 number=_adr_number(path.stem),
                 subject=subject.strip(),
                 supersedes=_coerce_supersedes(frontmatter.get("supersedes")),
+                relates=_coerce_supersedes(frontmatter.get("relates")),
             )
         )
     return entries
