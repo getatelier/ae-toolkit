@@ -520,6 +520,7 @@ def new_task_from_plan(
         "state": state,
         "pending_blockers": len(pending),
         "merge_commit": None,
+        "integration_branch": None,
         "completed_at": None,
         "merged_at": None,
         "worktree": None,
@@ -538,11 +539,11 @@ def is_task_inert(task: dict[str, Any]) -> tuple[bool, str | None]:
     """Check if a task record is inert (pre-run, terminal-free, no execution state).
 
     A task is inert when it has not yet run: its state is one of ``planned``,
-    ``ready``, or ``blocked``, and it has no ``branch``, ``worktree``, or
-    ``merge_commit`` assigned.
+    ``ready``, or ``blocked``, and it has no ``branch``, ``worktree``,
+    ``merge_commit``, or ``integration_branch`` assigned.
 
     Returns ``(True, None)`` when inert, or ``(False, blocking_field)`` naming
-    the field that prevents re-ingestion (R-3).
+    the field that prevents re-ingestion (R-3, R-7).
     """
     state = task.get("state")
     if state not in INERT_STATES:
@@ -553,7 +554,10 @@ def is_task_inert(task: dict[str, Any]) -> tuple[bool, str | None]:
         return False, "worktree"
     if task.get("merge_commit") is not None:
         return False, "merge_commit"
+    if task.get("integration_branch") is not None:
+        return False, "integration_branch"
     return True, None
+
 
 
 is_inert = is_task_inert

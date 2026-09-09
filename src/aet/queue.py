@@ -533,6 +533,7 @@ def record_task_meta(
     worktree: str | None,
     branch: str | None,
     base_commit: str | None = None,
+    integration_branch: str | None = None,
 ) -> None:
     """Record worktree, branch, and branch-origin metadata for a task.
 
@@ -540,6 +541,9 @@ def record_task_meta(
     written once, at branch creation; a task whose record lacks it can never
     derive ``merged`` from branch ancestry, so every branch-creation path must
     supply it.
+
+    ``integration_branch`` is the target branch the task was created to integrate
+    into (ADR-075 / ned-02). Written once at branch creation in single-pr mode.
     """
     for task in queue:
         if task.get("id") == task_id:
@@ -550,6 +554,9 @@ def record_task_meta(
             # erasing the very divergence the field exists to prove.
             if base_commit and not task.get("base_commit"):
                 task["base_commit"] = base_commit
+            if integration_branch and not task.get("integration_branch"):
+                task["integration_branch"] = integration_branch
+
 
 
 # ---------------------------------------------------------------------------

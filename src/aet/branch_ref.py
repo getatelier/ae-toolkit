@@ -150,6 +150,7 @@ def resolve_integration_branch_for_task(
     integration_mode: str,
     cli_base: str | None = None,
     backend: Any = None,
+    ignore_stamp: bool = False,
 ) -> BranchRef:
     """Resolve the integration branch for a specific task.
 
@@ -157,7 +158,7 @@ def resolve_integration_branch_for_task(
     is resolved using the full resolution order:
     1. CLI override (`cli_base`) -> provenance 'cli'
     2. Environment (`AET_WORK_BASE_BRANCH`) -> provenance 'env'
-    3. Task record stamp (`task["integration_branch"]`) -> provenance 'stamp'
+    3. Task record stamp (`task["integration_branch"]`) -> provenance 'stamp' (skipped if ignore_stamp=True)
     4. Parent document declared branch (`branch` in PRD frontmatter) -> provenance 'document'
     5. Envelope active epic (`read_epic()`) -> provenance 'epic'
     6. PRD filename stem fallback -> provenance 'prd'
@@ -176,11 +177,12 @@ def resolve_integration_branch_for_task(
 
     if integration_mode == "single-pr":
         # 3. Task record stamp
-        stamp = task.get("integration_branch")
-        if not stamp and isinstance(task.get("stamp"), dict):
-            stamp = task.get("stamp", {}).get("branch")
-        if stamp:
-            return BranchRef(str(stamp), "stamp")
+        if not ignore_stamp:
+            stamp = task.get("integration_branch")
+            if not stamp and isinstance(task.get("stamp"), dict):
+                stamp = task.get("stamp", {}).get("branch")
+            if stamp:
+                return BranchRef(str(stamp), "stamp")
 
         # 4. Parent document declared branch
         prd_path = _task_prd_path(task, repo_root)
@@ -220,3 +222,52 @@ def resolve_integration_branch_for_task(
 
     trunk = resolve_trunk_branch(repo_root, config)
     return BranchRef(trunk.ref, "trunk")
+
+
+def check_task_epic_mismatch(
+    repo_root: str | Path,
+    config: dict[str, Any],
+    task: dict[str, Any],
+    integration_mode: str,
+    cli_base: str | None = None,
+    backend: Any = None,
+) -> tuple[bool, str | None, str | None]:
+    """Check whether a task's stamped integration branch differs from the active chain.
+
+    Returns (has_mismatch, stamped_branch, resolved_branch).
+    Mismatch only applies in single-pr mode when the task has a stamped integration_branch.
+    """
+    if integration_mode != "single-pr":
+        return False, None, None
+    stamp = task.get("integration_branch")
+    if not stamp and isinstance(task.get("stamp"), dict):
+        stamp = task.get("stamp", {}).get("branch")
+    if not stamp:
+        return False, None, None
+
+    active_ref = resolve_integration_branch_for_task(
+        repo_root,
+        config,
+        task,
+        integration_mode,
+        cli_base=cli_base,
+        backend=backend,
+        ignore_stamp=True,
+    )
+    if active_ref.ref != str(stamp):
+        return True, str(stamp), active_ref.ref
+    return False, None, None
+
+
+def format_epic_mismatch_error(
+    task_id: str, stamped_branch: str, resolved_branch: str
+) -> str:
+    """Format the error message for an epic mismatch including remedies."""
+    return (
+        f"⛔ Epic mismatch for task '{task_id}': task is stamped to integration branch '{stamped_branch}', "
+        f"but the active epic resolves to '{resolved_branch}'.\n"
+        f"   Remedies:\n"
+        f"   1. Switch the active epic back to the stamped branch: `aet epic set {stamped_branch}` "
+        f"(or pass `--base {stamped_branch}`)\n"
+        f"   2. Reset the task to target the new epic: `aet state reset {task_id}`"
+    )

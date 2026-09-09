@@ -159,6 +159,11 @@ class TestInertnessPredicate(unittest.TestCase):
         self.assertFalse(inert)
         self.assertEqual(blocking_field, "merge_commit")
 
+        with_ib = dict(base_task, integration_branch="epic-01")
+        inert, blocking_field = is_task_inert(with_ib)
+        self.assertFalse(inert)
+        self.assertEqual(blocking_field, "integration_branch")
+
 
 class TestSprintAddReingestion(unittest.TestCase):
     """Tests for sprint add re-ingestion and distinct outcomes (R-1, R-2, R-3, R-4)."""
