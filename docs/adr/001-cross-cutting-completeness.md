@@ -1,3 +1,7 @@
+---
+subject: cross-cutting-completeness
+---
+
 # Cross-Cutting Completeness Framework
 
 ## Status

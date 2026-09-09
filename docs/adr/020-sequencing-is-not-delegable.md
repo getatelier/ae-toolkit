@@ -1,3 +1,7 @@
+---
+subject: sequencing-is-not-delegable
+---
+
 # Scheduling Is Delegable; Sequencing Is Not; the CLI Is the Enforcement Boundary
 
 ## Status

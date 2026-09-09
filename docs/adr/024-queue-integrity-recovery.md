@@ -1,3 +1,7 @@
+---
+subject: queue-integrity-recovery
+---
+
 # Queue Integrity Recovery: Audit Inspects, Heal Restamps
 
 ## Status

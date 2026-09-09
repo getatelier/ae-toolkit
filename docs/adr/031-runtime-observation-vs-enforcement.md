@@ -1,3 +1,7 @@
+---
+subject: runtime-observation-vs-enforcement
+---
+
 # Runtime Observation vs Enforcement: Budget Is Analytics-Only; Stalls Are Detected by Silence, Not the Clock
 
 ## Status

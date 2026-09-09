@@ -1,3 +1,7 @@
+---
+subject: markdown-quality-gates
+---
+
 # Slim Markdown Quality Gates
 
 ## Status

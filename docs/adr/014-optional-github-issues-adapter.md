@@ -1,3 +1,7 @@
+---
+subject: projection-axis
+---
+
 # Optional GitHub Issues Adapter for the Work Queue
 
 ## Status

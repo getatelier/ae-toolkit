@@ -1,3 +1,7 @@
+---
+subject: console-script-entry-point
+---
+
 # The Console Script Is the Only Entry Point
 
 ## Status

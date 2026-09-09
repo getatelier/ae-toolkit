@@ -1,5 +1,6 @@
 ---
 subject: projection-axis
+supersedes: [14]
 ---
 
 # GitHub Issues Is a Projection, Not a Backend

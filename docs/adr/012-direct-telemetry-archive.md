@@ -1,3 +1,7 @@
+---
+subject: direct-telemetry-archive
+---
+
 # Direct Telemetry Archive and Per-Task Logs
 
 ## Status

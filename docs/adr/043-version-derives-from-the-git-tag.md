@@ -1,3 +1,7 @@
+---
+subject: version-from-git-tag
+---
+
 # The Version Derives From the Git Tag
 
 ## Status

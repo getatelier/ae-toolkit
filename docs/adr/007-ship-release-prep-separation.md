@@ -1,3 +1,7 @@
+---
+subject: release-prep-separation
+---
+
 # Separate Release Preparation from Merge Gating
 
 ## Status

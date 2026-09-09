@@ -1,3 +1,7 @@
+---
+subject: system-distribution
+---
+
 # Distribute AE Toolkit as a System, Not Individual Skills
 
 ## Status
