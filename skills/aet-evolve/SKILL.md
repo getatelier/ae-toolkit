@@ -37,7 +37,7 @@ Analyze what went wrong in the last loop and identify the systemic root cause.
 
 1. **Retro debt check** — review action items from the most recent `docs/retros/*.md`.
    - Verified done → mark complete.
-   - Not done → convert to a queue task in `.agents/work-queue.json` or explicitly drop with reason.
+   - Not done → convert to a queue task or explicitly drop with reason.
    - Record the outcome in the current retro context.
 2. Read the completed task's spec (rendered plan or task record) and the actual implementation (git diff).
 3. Identify deviations: what did the agent do differently from the plan? What did you have to correct?

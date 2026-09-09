@@ -28,7 +28,7 @@ This is the source-of-truth repo for the **Agentic Engineering Toolkit (AE Toolk
 │   ├── reference/
 │   ├── templates/
 │   ├── learnings.jsonl
-│   └── work-queue.json
+│   └── ledger.jsonl
 ├── scripts/                # Maintenance tooling (validation, hooks, release guards)
 │   └── archive/            # One-off migrations that have already run
 ├── tests/                  # pytest suite
@@ -78,7 +78,7 @@ This is the source-of-truth repo for the **Agentic Engineering Toolkit (AE Toolk
 - Match validation to the change; do not default to the heaviest suite:
   - **Code, skill, or workflow changes** → run `make validate` before completion.
   - **Prose-only / documentation changes** → run `make lint` (or the relevant doc linter); skip the full build/test suite.
-  - **Queue or state bookkeeping** (plan status drift, history cleanup, work-queue fixes) → verify with the specific tool surface, e.g., `aet status`, `aet plans lint`, or `aet state audit`.
+  - **Queue or state bookkeeping** (plan status drift, history cleanup, state fixes) → verify with the specific tool surface, e.g., `aet status`, `aet plans lint`, or `aet state audit`.
   - **Frontmatter-only plan edits** → `aet status` plus `aet plans lint` is sufficient;
     do not run the full suite unless the change drives code paths.
 - Always update `docs/CONVENTIONS.md` if you introduce a new skill pattern

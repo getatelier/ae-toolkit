@@ -108,7 +108,7 @@ Use this checklist during every `/aet-setup` invocation. Every topic must be exp
 - [ ] `.gitmessage` template for conventional commits?
 - [ ] Branch naming conventions documented?
 - [ ] Commitlint or equivalent configured (if easily supported)?
-- [ ] `.gitignore` excludes active plans (`docs/plans/active/`) and generated agent artifacts (`.agents/work-queue.json`, `.agents/work-queue.json.lock`, `.agents/work-queue.lease`, `.agents/work-history.jsonl`, `.agents/runs/`, `.worktrees/`)?
+- [ ] `.gitignore` excludes active plans (`docs/plans/active/`) and generated agent artifacts (`.agents/work-history.jsonl`, `.agents/runs/`, `.worktrees/`)?
 
 ## 15. Task Backend Configuration
 

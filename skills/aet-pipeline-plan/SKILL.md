@@ -85,8 +85,8 @@ If the user's request contains implementation directives (e.g., "make", "change"
 1. Follow the `aet-plan` → `clarify-goal` + `create-prd` + `create-stories` + `plan` procedures
    - `create-stories` and `plan` enforce task size guardrails automatically (2-of-N signal model, context-budget + coherence, auto-split, `⚠️ ATOMIC OVERSIZED` marking). See `docs/CONVENTIONS.md` for the current model; size is measured after implementation, not gated at intake (ADR-046).
    - R-trace discipline (numbered R-ids carried brief → PRD → plan task, with a coverage lint) is enforced by `aet-plan` here and demonstrated at the P0 exit gate, ahead of Phase 4's mechanized <!-- aet-lint: off -->`aet plan validate`<!-- aet-lint: on -->
-2. Produce: `docs/prds/{feature}-prd.md`, `docs/plans/*.md` files, `.agents/work-queue.json`
-3. **Queue preservation guardrail:** When `aet-plan` produces `.agents/work-queue.json`, it must merge new tickets into the existing queue rather than replacing it. Existing tasks must survive the planning session unchanged.
+2. Produce: `docs/prds/{feature}-prd.md`, `docs/plans/*.md` files
+3. **Queue preservation guardrail:** When plans are admitted to the sprint, new tickets must be merged into the existing queue rather than replacing it. Existing tasks must survive the planning session unchanged.
 4. **HARD GATE:** Present PRD to user for review. Ask:
 
    ```
@@ -122,7 +122,7 @@ If the user's request contains implementation directives (e.g., "make", "change"
 
 - `docs/prds/{feature}-prd.md` — stage: `scope-validated`
 - `docs/plans/*.md` — stage: `plan-approved`
-- `.agents/work-queue.json` — curated via `aet sprint add` and reconciled via `aet queue sync`, ready for aet-work
+- Task records — curated via `aet sprint add` and reconciled via `aet queue sync`, ready for aet-work
 
 ## Completion Protocol
 
@@ -137,7 +137,7 @@ After the pipeline completes all steps:
    Artifacts:
    - PRD:       docs/prds/{feature}-prd.md (scope-validated)
    - Plans:     docs/plans/*.md (plan-approved)
-   - Queue:     .agents/work-queue.json (sync verified, no drift)
+   - Queue:     Sprint board (sync verified, no drift)
 
    Next step:
    - Single task: run `aet run-one {ticket-id}`

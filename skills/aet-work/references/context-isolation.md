@@ -38,7 +38,7 @@ Parent agent session (clean)
 - **Physical process boundary** — the old context is unreachable; no compliance needed.
 - **Universal** — works on every runtime that exposes a CLI (Claude Code, Kimi, Cursor, etc.).
 - **Branch isolation enforced** — each task runs in its own git worktree on its own branch.
-- **Queue state is the memory** — `.agents/work-queue.json` persists across process boundaries.
+- **Queue state is the memory** — task and ledger state persists across process boundaries.
 
 **Trade-offs:**
 
@@ -122,7 +122,7 @@ Parallel execution of independent tasks is safe because isolation is enforced at
 
 1. **Git worktree isolation** — each task runs in a separate git worktree on its own branch. Files, git state, and branch history are physically separate. Two tasks cannot collide on the same working tree because each has its own `.git/worktrees/<id>` directory.
 
-2. **OS process isolation** — each task runs in its own agent CLI process. There is no shared memory, no shared context, and no way for one agent to read another's state. The only shared resource is the queue file, and access to that is serialized.
+2. **OS process isolation** — each task runs in its own agent CLI process. There is no shared memory, no shared context, and no way for one agent to read another's state. The only shared resource is the backend state, and access to that is serialized.
 
 Because these layers are independent, doubling the number of concurrent tasks does not weaken isolation. Task #1 and Task #10 are as isolated from each other as Task #1 and Task #2 were in sequential mode.
 
@@ -139,13 +139,13 @@ This preserves work already in progress. If Task #3 fails while Tasks #4 and #5 
 
 ## Queue-Update Invariant
 
-Under parallel execution, only the main orchestrator loop reads and writes `.agents/work-queue.json`. Child processes (the agent CLI invocations) do not touch the queue file. This eliminates race conditions without requiring file locking:
+Under parallel execution, only the main orchestrator loop reads and writes task state. Child processes (the agent CLI invocations) do not touch task backend records. This eliminates race conditions:
 
 - The orchestrator spawns a child
 - The child runs to completion and exits
 - The orchestrator polls for completion and only then does it update the queue
 
-Queue mutations are serialized by the `queue_lock` helper in `aet-work/lib/aet_queue.py`, which uses an advisory `flock` on a sidecar lock file. The orchestrator wraps every load→mutate→save cycle in this lock, and `aet state` acquires the same lock around every transition. No database is required, but file locking is required even within a single process because child CLI sessions and the orchestrator itself can write concurrently.
+Queue mutations are serialized by the backend storage and lock manager. The orchestrator wraps every load→mutate→save cycle in this lock, and `aet state` acquires the same lock around every transition. No database is required, but file locking is required even within a single process because child CLI sessions and the orchestrator itself can write concurrently.
 
 ## Plan Snapshot Semantics
 

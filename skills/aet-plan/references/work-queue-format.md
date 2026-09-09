@@ -1,12 +1,12 @@
 # Work Queue Format
 
-## File Location
+## Storage and Location
 
-`.agents/work-queue.json`
+Task records are stored in git refs under `refs/aet/tasks/<task-id>`.
 
 ## Design Principle
 
-The queue file stores **persistent facts** and the canonical `state` for each task. Reads (`aet status`, `aet next`, the orchestrator) project the stored `state` directly; they do not recompute pickability from git on every read. A separate `aet state audit` command reconciles stored state against git ground truth on demand.
+Task records store **persistent facts** and the canonical `state` for each task. Reads (`aet status`, `aet next`, the orchestrator) project the stored `state` directly; they do not recompute pickability from git on every read. A separate `aet state audit` command reconciles stored state against git ground truth on demand.
 
 ## Schema
 
@@ -99,14 +99,14 @@ When a task reaches a terminal state, the writer decrements each dependent's `pe
 
 ## Live / Settled Partition
 
-`.agents/work-queue.json` holds only non-terminal tasks. When a task transitions to a terminal state (`merged` or `abandoned`), it is appended to `.agents/work-history.jsonl` and removed from the live file atomically. The orchestrator, `status`, and `next` never load settled history for scheduling.
+Active task records hold only non-terminal tasks. When a task transitions to a terminal state (`merged` or `abandoned`), it is sealed into history and ledger records. The orchestrator, `status`, and `next` never load settled history for scheduling.
 
 ## Auditing Stored State
 
 To reconcile stored state against git ground truth, run:
 
 ```bash
-aet state audit [.agents/work-queue.json]
+aet state audit
 ```
 
 `audit` reports every task whose stored state disagrees with the state expected from `branch`, `merge_commit`, `blocked_by`, and `plan_file` existence. It never mutates the queue.
