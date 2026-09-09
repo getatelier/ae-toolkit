@@ -149,7 +149,6 @@ rules:
   # dcl-02: ADR corpus structural integrity and relation consistency
   - type: adr_corpus_integrity
     target: docs/adr
-    severity: warning
     reason: "The ADR corpus must maintain number uniqueness, relation integrity, and subject frontmatter"
 
   # dcl-05: Code anchors resolve to a symbol, not a line

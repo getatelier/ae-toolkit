@@ -808,6 +808,14 @@ def test_real_skills_tree_passes_after_retro_options_removal():
     assert skill_violations == []
 
 
+def test_real_adr_corpus_passes_integrity_and_unique_live_subject():
+    """The real docs/adr corpus satisfies adr_corpus_integrity and unique_live_subject at error severity."""
+    violations = docs_lint.lint_docs(REPO_ROOT / ".agents" / "doc-rules.yaml", REPO_ROOT)
+    adr_violations = [v for v in violations if "docs/adr" in str(v[0])]
+    assert adr_violations == []
+
+
+
 def test_false_positives_allowed(tmp_path):
     """Third-party flags and AET flag semantics are not blocked by the option rules."""
     repo = tmp_path / "repo"
