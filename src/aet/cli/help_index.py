@@ -25,6 +25,7 @@ SECTIONS: dict[str, str] = {
     "plan": "Plan work",
     "plans": "Plan work",
     "sprint": "Plan work",
+    "epic": "Plan work",
     "backlog": "Plan work",
     "docs": "Plan work",
     # Run work
