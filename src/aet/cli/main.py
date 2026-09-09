@@ -43,6 +43,7 @@ from aet.cli import (
     context,
     desk,
     docs,
+    epic,
     gate,
     handoff,
     harness_guard,
@@ -198,6 +199,7 @@ app.add_typer(backlog.app, name="backlog", help="Backlog curation commands.")
 app.add_typer(breaker_cli.app, name="breaker", help="Circuit breaker inspection and reset.")
 app.add_typer(desk.app, name="desk", help="Review cockpit for awaiting_merge tasks.")
 app.add_typer(docs.app, name="docs", help="Documentation linting and syncing.")
+app.add_typer(epic.app, name="epic", help="Active epic declaration and inspection.")
 app.add_typer(gate.app, name="gate", help="Fail-closed verdict writer and review board renderer.")
 app.add_typer(handoff.app, name="handoff", help="Run-scoped handoff note commands.")
 app.add_typer(hooks.app, name="hooks", help="Git hook installation and management.")

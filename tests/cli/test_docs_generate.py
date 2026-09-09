@@ -19,6 +19,7 @@ _NOUN_GROUPS = [
     "backlog",
     "desk",
     "docs",
+    "epic",
     "gate",
     "hooks",
     "plan",

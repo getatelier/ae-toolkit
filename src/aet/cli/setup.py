@@ -405,6 +405,21 @@ def setup_verify(
         typer.echo(f"  integration_branch: {integration.ref} ({integration_provenance})")
         trunk_provenance = _format_branch_provenance(trunk.provenance, config_source)
         typer.echo(f"  trunk: {trunk.ref} ({trunk_provenance})")
+        try:
+            from aet.backends.factory import create_backend
+
+            backend = create_backend(
+                config_path=config_path,
+                queue_file=str(config_repo_root / ".agents" / "aet-queue"),
+                history_file=str(config_repo_root / ".agents" / "work-history.jsonl"),
+            )
+            epic = backend.read_epic()
+            backend.close()
+            if epic and epic.get("branch"):
+                title_str = f" ({epic['title']})" if epic.get("title") else ""
+                typer.echo(f"  active_epic: {epic['branch']}{title_str} (envelope)")
+        except Exception as exc:
+            typer.echo(f"  ⚠ could not read queue envelope: {exc}", err=True)
 
     for entry in missing_aet_gitignore_entries(config_repo_root):
         typer.echo(f"  ⚠ .gitignore is missing {entry}; run `aet setup bootstrap`", err=True)

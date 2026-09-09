@@ -174,3 +174,128 @@ def test_base_ref_leaves_an_already_qualified_ref_alone(tmp_path: Path) -> None:
     _set_remote_ref(repo, "origin/main")
 
     assert resolve_base_ref(repo, "origin/main") == "origin/main"
+
+
+def test_resolution_order_for_single_pr(monkeypatch, tmp_path: Path) -> None:
+    """R-4: Test each step of the 8-step resolution order in single-pr mode."""
+    from aet.backends.factory import create_backend
+    from aet.branch_ref import resolve_integration_branch_for_task
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+
+    # Setup PRD file with declared branch
+    prd_path = repo / "docs" / "prds" / "my-prd-stem.md"
+    prd_path.parent.mkdir(parents=True, exist_ok=True)
+    prd_path.write_text(
+        "---\nbranch: feature/doc-declared\npr_title: Doc PR Title\n---\n\n# PRD\n",
+        encoding="utf-8",
+    )
+
+    # Setup PRD file without declared branch
+    plain_prd = repo / "docs" / "prds" / "plain-prd-stem.md"
+    plain_prd.write_text("# Plain PRD\n", encoding="utf-8")
+
+    # Setup envelope epic
+    backend = create_backend(
+        queue_file=str(repo / ".agents" / "aet-queue"),
+        history_file=str(repo / ".agents" / "work-history.jsonl"),
+    )
+    backend.set_epic(branch="epic/envelope-branch", title="Envelope Epic")
+    backend.close()
+
+    config = {"integration_branch": "config/branch", "trunk_branch": "main"}
+    task_with_doc = {"spec": {"frontmatter": {"source_prd": "docs/prds/my-prd-stem.md"}}}
+    task_with_plain_prd = {"spec": {"frontmatter": {"source_prd": "docs/prds/plain-prd-stem.md"}}}
+    task_no_prd = {}
+
+    # 1. CLI override wins over everything
+    monkeypatch.setenv("AET_WORK_BASE_BRANCH", "env/branch")
+    task_full = {**task_with_doc, "integration_branch": "stamp/branch"}
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_full, "single-pr", cli_base="cli/branch"
+    )
+    assert ref.ref == "cli/branch"
+    assert ref.provenance == "cli"
+
+    # 2. Env wins over stamp, document, epic, prd, config, trunk
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_full, "single-pr", cli_base=None
+    )
+    assert ref.ref == "env/branch"
+    assert ref.provenance == "env"
+
+    monkeypatch.delenv("AET_WORK_BASE_BRANCH", raising=False)
+
+    # 3. Task record stamp wins over document, epic, prd, config, trunk
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_full, "single-pr", cli_base=None
+    )
+    assert ref.ref == "stamp/branch"
+    assert ref.provenance == "stamp"
+
+    # 4. Parent document declared branch wins over epic, prd, config, trunk
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_with_doc, "single-pr", cli_base=None
+    )
+    assert ref.ref == "feature/doc-declared"
+    assert ref.provenance == "document"
+
+    # 5. Envelope active epic wins over prd stem, config, trunk
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_with_plain_prd, "single-pr", cli_base=None
+    )
+    assert ref.ref == "epic/envelope-branch"
+    assert ref.provenance == "epic"
+
+    # Clear epic from envelope
+    backend = create_backend(
+        queue_file=str(repo / ".agents" / "aet-queue"),
+        history_file=str(repo / ".agents" / "work-history.jsonl"),
+    )
+    backend.clear_epic()
+    backend.close()
+
+    # 6. PRD filename stem wins over config, trunk
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_with_plain_prd, "single-pr", cli_base=None
+    )
+    assert ref.ref == "plain-prd-stem"
+    assert ref.provenance == "prd"
+
+    # 7. Config integration_branch wins over trunk
+    ref = resolve_integration_branch_for_task(
+        repo, config, task_no_prd, "single-pr", cli_base=None
+    )
+    assert ref.ref == "config/branch"
+    assert ref.provenance == "config"
+
+    # 8. Trunk fallback
+    ref = resolve_integration_branch_for_task(
+        repo, {}, task_no_prd, "single-pr", cli_base=None
+    )
+    assert ref.ref == "main"
+    assert ref.provenance == "trunk"
+
+
+def test_declared_branch_is_used_verbatim(tmp_path: Path) -> None:
+    """R-6: A declared branch containing slashes is used verbatim without alteration."""
+    from aet.branch_ref import resolve_integration_branch_for_task
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+
+    prd_path = repo / "docs" / "prds" / "feature-prd.md"
+    prd_path.parent.mkdir(parents=True, exist_ok=True)
+    prd_path.write_text(
+        "---\nbranch: feature/custom/deep-branch-name\n---\n# PRD\n",
+        encoding="utf-8",
+    )
+
+    task = {"spec": {"frontmatter": {"source_prd": "docs/prds/feature-prd.md"}}}
+    ref = resolve_integration_branch_for_task(repo, {}, task, "single-pr")
+
+    assert ref.ref == "feature/custom/deep-branch-name"
+    assert ref.provenance == "document"

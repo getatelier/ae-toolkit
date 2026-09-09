@@ -956,6 +956,7 @@ class TestGateDispatcherRouting(unittest.TestCase):
                 "AET_EVIDENCE_PATH": str(dest),
                 "AET_BIN_DIR": str(tmp / "aet-bin"),
                 "AET_TELEMETRY_ARCHIVE_DIR": str(tmp / "telemetry"),
+                "PYTHONPATH": str(_REPO_ROOT / "src"),
                 # The env is built explicitly, so conftest's _isolate_ledger
                 # cannot reach this child: a monkeypatched module attribute does
                 # not cross a process boundary, and an env var not listed here is

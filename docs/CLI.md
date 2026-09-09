@@ -261,6 +261,50 @@ Generate the CLI reference markdown file.
 
 - `--output` *path* — Output file path (default: docs/CLI.md under repo root).
 
+## `aet epic`
+
+Active epic declaration and inspection.
+
+### Subcommands
+
+- `clear`: Clear the active epic declaration.
+- `set`: Declare the active epic in the queue envelope.
+- `show`: Show the active epic declaration.
+
+## `aet epic set`
+
+Declare the active epic in the queue envelope.
+
+### Options
+
+- `branch` *str* — Integration branch for the epic. (required)
+- `--title` *str* — Human-readable epic title.
+- `--body-file` *str* — Path to markdown body file describing the epic.
+- `--create` *boolean* — Declare the epic before creating its branch. (default: `False`)
+- `--config` *str* — Path to AET configuration file. (default: `.agents/aet-config.json`)
+- `--queue-file` *str* — Path to queue anchor. (default: `.agents/aet-queue`)
+- `--history-file` *str* — Path to work history. (default: `.agents/work-history.jsonl`)
+
+## `aet epic show`
+
+Show the active epic declaration.
+
+### Options
+
+- `--config` *str* — Path to AET configuration file. (default: `.agents/aet-config.json`)
+- `--queue-file` *str* — Path to queue anchor. (default: `.agents/aet-queue`)
+- `--history-file` *str* — Path to work history. (default: `.agents/work-history.jsonl`)
+
+## `aet epic clear`
+
+Clear the active epic declaration.
+
+### Options
+
+- `--config` *str* — Path to AET configuration file. (default: `.agents/aet-config.json`)
+- `--queue-file` *str* — Path to queue anchor. (default: `.agents/aet-queue`)
+- `--history-file` *str* — Path to work history. (default: `.agents/work-history.jsonl`)
+
 ## `aet gate`
 
 Fail-closed verdict writer and review board renderer.

@@ -224,3 +224,40 @@ class TestSetupVerifyConfigProvenance(SetupVerifyTestCase):
         self.assertIn("integration_mode: single-pr (config (project))", out)
         self.assertIn("integration_branch: feat/epic (config (project))", out)
         self.assertIn("trunk: develop (config (project))", out)
+
+    def test_verify_reports_active_epic(self):
+        """R-14: When an epic is declared in the envelope, verify outputs active_epic."""
+        from aet.backends.factory import create_backend
+
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        self._init_repo(repo)
+
+        # 1. No epic: active_epic line is omitted
+        rc, out, err = self._run_verify_in_repo(repo)
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("active_epic", out)
+
+        # 2. Epic with title set in envelope
+        backend = create_backend(
+            queue_file=str(repo / ".agents" / "aet-queue"),
+            history_file=str(repo / ".agents" / "work-history.jsonl"),
+        )
+        backend.set_epic(branch="feat/ned-epic", title="Ned Epic Title")
+        backend.close()
+
+        rc, out, err = self._run_verify_in_repo(repo)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("active_epic: feat/ned-epic (Ned Epic Title) (envelope)", out)
+
+        # 3. Epic without title
+        backend = create_backend(
+            queue_file=str(repo / ".agents" / "aet-queue"),
+            history_file=str(repo / ".agents" / "work-history.jsonl"),
+        )
+        backend.set_epic(branch="feat/titleless-epic", title=None)
+        backend.close()
+
+        rc, out, err = self._run_verify_in_repo(repo)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("active_epic: feat/titleless-epic (envelope)", out)
