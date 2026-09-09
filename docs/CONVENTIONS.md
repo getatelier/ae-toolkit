@@ -195,12 +195,18 @@ are resolved external-first.
 2. `git symbolic-ref refs/remotes/origin/HEAD`
 3. Fallback to `main`
 
-**`integration_branch`** is resolved in this order:
+**`integration_branch`** is resolved in this order (in `single-pr` mode):
 
-1. `--base` CLI flag
+1. `--base` CLI flag (`cli_base`)
 2. `AET_WORK_BASE_BRANCH` environment variable
-3. `integration_branch` in config
-4. `trunk_branch` (via the same trunk resolution above)
+3. Task record stamp (`task["integration_branch"]`)
+4. Parent document declared branch (`branch` in PRD frontmatter)
+5. Envelope active epic (`aet epic set` / `read_epic()`)
+6. PRD filename stem fallback
+7. `integration_branch` in config
+8. `trunk_branch` fallback (via the same trunk resolution above)
+
+In `pr-per-task` mode, steps 3–6 are skipped, preserving Scenario A as the degenerate case.
 
 **`integration_mode`** is resolved from config only; it defaults to `pr-per-task`
 and must be one of `pr-per-task` or `single-pr`.
@@ -210,37 +216,35 @@ mechanical implementation detail; the integration branch is the semantic input.
 
 #### Scenario: One Engineer, Shared Repo, Plans on a Feature Branch, `single-pr`
 
-You want to keep all plan updates on one long-running branch and ship them
-through a single PR, while still using AET's queue and state machine locally.
+You want to keep all plan updates on one feature branch and ship them through a
+single PR, while still using AET's queue and state machine locally.
 
-1. Create a shadow AET config so the repo stays free of AET config:
+1. Configure `single-pr` mode (e.g. in shadow config so the repo stays free of AET config):
 
    ```bash
    aet configure --guided --scope shadow --integration-mode single-pr
    ```
 
-2. Edit `~/.aet/{config-slug}/config.json` to point `integration_branch` at the
-   long-running feature branch:
-
-   ```json
-   {
-     "integration_mode": "single-pr",
-     "integration_branch": "docs-roadmap"
-   }
-   ```
-
-3. Leave `trunk_branch` unset so it resolves from `refs/remotes/origin/HEAD`
-   (or set it explicitly to `main`).
-
-4. Run plans on the `docs-roadmap` branch:
+2. Declare the active epic branch, title, and PR body:
 
    ```bash
-   aet run --base docs-roadmap
+   aet epic set docs-roadmap --title "Docs: Roadmap implementation"
    ```
 
-   `aet-work` uses `docs-roadmap` as the worktree base, and `aet-ship` targets
-   the resolved trunk as the final merge destination. `aet setup verify` shows
-   exactly which trunk the current checkout resolves to.
+3. Run tasks against the declared epic:
+
+   ```bash
+   aet run
+   ```
+
+   `aet-work` uses `docs-roadmap` as the worktree base, stamps tasks at intake,
+   and integrates tasks locally into `docs-roadmap`.
+
+4. Open the epic pull request targeting trunk:
+
+   ```bash
+   aet ship open-epic
+   ```
 
 ## Planning Artifact Directories
 

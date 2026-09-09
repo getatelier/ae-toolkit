@@ -33,6 +33,7 @@ A bare task id given to `aet ship`, `aet ship gate`, `aet ship open`, or `aet sh
 ## Pre-Merge Gate
 
 `aet ship gate` (and pre-merge commands including `aet ship open` and `aet ship merge`) runs against the task's resolved feature branch and dedicated workspace, independent of the ambient checkout:
+
 1. **Workspace and branch resolution**: Resolves the feature branch from the task record, locating its existing worktree or allocating a dedicated temporary worktree.
 2. Rebase verification of the resolved feature branch against trunk.
 3. Clean working tree check in the resolved workspace.
@@ -55,14 +56,20 @@ aet ship close FEAT-001
 
 ### `single-pr` (epic mode)
 
-Tasks integrate into a shared Integration Branch (`--base`) and the epic ships
-as one PR to trunk. Typical flow:
+Tasks integrate into a shared Integration Branch (declared via `aet epic set` or
+`--base`) and the epic ships as one PR to trunk. Typical flow:
 
 ```bash
-# Start or continue the epic on the integration branch
-aet run --base feat/epic-name
+# Declare the active epic branch, title, and optional PR body:
+aet epic set feat/epic-name --title "Feature: epic description"
 
-# When the epic branch is ready to merge to trunk, ship it directly:
+# Run tasks against the active epic:
+aet run
+
+# Open the epic pull request targeting trunk:
+aet ship open-epic
+
+# Or when the epic branch is ready to merge directly to trunk:
 aet ship merge feat/epic-name --branch main
 
 # Close each task that was part of the epic, pointing at the epic branch as
@@ -96,6 +103,7 @@ reports success.
 
 At terminal closure (`aet ship close` and `aet ship merge`), resilient plan
 archival checks for a local plan file:
+
 - If `docs/plans/active/<id>.md` (or legacy `docs/plans/<id>.md`) is present on
   disk, it is moved to `docs/plans/archive/<id>.md` and staged into git if
   `docs/plans/archive/` is tracked. Repositories can track `docs/plans/archive/`
