@@ -319,8 +319,9 @@ scope — the epic/integration layer — is a feature and is planned as one.
   does scoping validation in the shared helper cover both? R-10 requires the
   behavior; the plan makes the structural call with the code in front of it.
 - Is one integration branch per queue sufficient, or will an operator want two
-  epics in flight? Declared a non-goal here; the constraint should be enforced
-  with a clear error rather than assumed.
+  epics in flight? Resolved by [ADR-076](../adr/076-an-epic-is-declared-not-inferred.md):
+  one active epic is declared in the queue envelope at a time; tasks stamped with
+  a different integration branch halt execution fail-closed with a mismatch error.
 
 ## Divergence Summary
 
