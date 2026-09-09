@@ -445,7 +445,9 @@ def status(
         help="Print a machine-readable JSON projection instead of the human report",
     ),
 ) -> None:
-    """Show work queue status."""
+    """Show work queue status, active detached runs, systemic circuit breaker
+    warnings, and last-run telemetry diagnostics.
+    """
     rc = _run(queue_file, history_file, plans_dir, json_output)
     raise typer.Exit(rc)
 
