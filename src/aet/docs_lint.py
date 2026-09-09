@@ -6,6 +6,7 @@ checkout. The evaluator never executes rule content.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -13,6 +14,26 @@ import yaml
 VALID_RULE_TYPES = frozenset(
     {"must_contain", "must_not_contain", "path_exists", "path_absent", "unique_live_subject"}
 )
+
+_ESCAPE_CLOSED_RE = re.compile(r"<!-- aet-lint: off -->.*?<!-- aet-lint: on -->", re.DOTALL)
+_ESCAPE_UNCLOSED_RE = re.compile(r"<!-- aet-lint: off -->.*", re.DOTALL)
+
+
+def strip_lint_escapes(text: str) -> str:
+    """Remove escaped spans between ``<!-- aet-lint: off -->`` and ``<!-- aet-lint: on -->``.
+
+    Treats an unclosed ``<!-- aet-lint: off -->`` as running to the end of the document.
+    A document without markers is returned byte-identical.
+    """
+    if "<!-- aet-lint: off -->" not in text:
+        return text
+    stripped = _ESCAPE_CLOSED_RE.sub("", text)
+    if "<!-- aet-lint: off -->" in stripped:
+        stripped = _ESCAPE_UNCLOSED_RE.sub("", stripped)
+    return stripped
+
+
+_strip_lint_escapes = strip_lint_escapes
 
 
 class DocsLintError(Exception):
@@ -69,6 +90,7 @@ def _extract_section(text: str, section: str) -> str | None:
     The body runs from the line after the heading until the next heading of
     equal or higher level (fewer ``#`` characters).
     """
+    text = strip_lint_escapes(text)
     lines = text.splitlines()
     for i, line in enumerate(lines):
         stripped = line.lstrip()
@@ -226,6 +248,7 @@ def _validate_rule(raw: object, index: int) -> dict:
 
 def _check_text(path: Path, text: str, rule: dict, reason: str) -> str | None:
     """Evaluate a ``must_contain`` or ``must_not_contain`` rule against *text*."""
+    text = strip_lint_escapes(text)
     section = rule.get("section")
     haystack = text
     section_note = ""
