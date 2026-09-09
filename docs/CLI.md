@@ -168,6 +168,33 @@ Add a plan to the backlog.
 - `--queue-file` *str* — Path to queue anchor (default: `.agents/aet-queue`)
 - `--history-file` *str* — Path to work-history.jsonl (default: `.agents/work-history.jsonl`)
 
+## `aet breaker`
+
+Circuit breaker inspection and reset.
+
+### Subcommands
+
+- `reset`: Reset circuit breaker and clear refs/aet/breaker.
+- `show`: Show circuit breaker tracked failure signatures and trip status.
+
+## `aet breaker show`
+
+Show circuit breaker tracked failure signatures and trip status.
+
+### Options
+
+- `--json` *boolean* — Emit machine-readable JSON representation. (default: `False`)
+- `--repo-root` *path* — Repository root (defaults to git root or current working directory).
+
+## `aet breaker reset`
+
+Reset circuit breaker and clear refs/aet/breaker.
+
+### Options
+
+- `--force` *boolean* — Reset without interactive confirmation. (default: `False`)
+- `--repo-root` *path* — Repository root (defaults to git root or current working directory).
+
 ## `aet desk`
 
 Review cockpit for awaiting_merge tasks.
