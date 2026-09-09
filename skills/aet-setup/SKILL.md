@@ -355,9 +355,6 @@ When creating `.agents/`, ensure `.gitignore` excludes generated workflow artifa
 ```gitignore
 # Active/draft plan scratch
 docs/plans/active/
-.agents/work-queue.json
-.agents/work-queue.json.lock
-.agents/work-queue.lease
 .agents/work-history.jsonl
 .agents/runs/
 .worktrees/

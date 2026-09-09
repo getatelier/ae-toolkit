@@ -53,5 +53,5 @@
 
 - PR shows >50 changed files for a small task
 - PR includes unrelated docs (`docs/plans/` or `docs/prds/` from other epics)
-- PR includes queue file changes (`.agents/work-queue.json`) unless the task is queue maintenance
+- PR includes queue file changes unless the task is queue maintenance
 - `git merge-base HEAD origin/main` does not equal `origin/main` for an independent branch

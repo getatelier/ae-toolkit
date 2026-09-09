@@ -2,9 +2,9 @@
 
 This directory contains usage examples for aet-work.
 
-The skill supports two task backends:
+The skill supports git-refs task storage with optional projections:
 
-- **JSON backend** (default): stores the active queue in `.agents/work-queue.json`. No external tooling required.
-- **GitHub Issues backend** (opt-in): mirrors tasks as GitHub issues and AET states as labels. Requires the `gh` CLI and a configured repository.
+- **git-refs backend** (default): stores queue state and ledger events under `refs/aet/*`.
+- **GitHub Issues projection** (opt-in): mirrors tasks as GitHub issues and AET states as labels. Requires the `gh` CLI and a configured repository.
 
-See [`../references/github-backend.md`](../references/github-backend.md) for the GitHub backend label contract, `gh` CLI requirements, and sync behavior.
+See [`../references/github-backend.md`](../references/github-backend.md) for the GitHub projection label contract, `gh` CLI requirements, and sync behavior.

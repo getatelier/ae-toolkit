@@ -2,6 +2,8 @@
 
 ## When to read this
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy files and schemas in upgrade guide -->
 You have an existing project that uses the AE Toolkit (aet-work) and its work queue is still on the old model:
 
 - `tasks[].status` is the only field.
@@ -11,9 +13,12 @@ You have an existing project that uses the AE Toolkit (aet-work) and its work qu
 - `.agents/work-archive.json` is still the record of completed work.
 
 This guide brings the project onto the FODS state model (`state`, `history[]`, live/settled partition) without breaking the queue.
+<!-- aet-lint: on -->
 
 ## Goal of backward compatibility
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy storage files in backward compatibility section -->
 New AET scripts should **ignore old formats safely**:
 
 - Old human-readable plan sections (`## Dependencies`, `## Blocked by`) are not parsed as machine truth.
@@ -22,6 +27,7 @@ New AET scripts should **ignore old formats safely**:
 - Already-settled records are dropped from the board by `sync` (see known issue below).
 
 The boundary is the **validated frontmatter contract**. Anything outside that contract is either human prose or legacy data and must not affect scheduling.
+<!-- aet-lint: on -->
 
 ## One-time upgrade procedure
 
@@ -37,10 +43,13 @@ For other projects, copy or symlink the latest `aet-work/` skill directory.
 
 ### 2. Back up current state
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy files in backup step -->
 ```bash
 cp .agents/work-queue.json .agents/work-queue.json.pre-fods-backup
 cp .agents/work-archive.json .agents/work-archive.json.pre-fods-backup 2>/dev/null || true
 ```
+<!-- aet-lint: on -->
 
 ### 3. Migrate plan files to the frontmatter contract
 
@@ -69,9 +78,12 @@ add or migrate a `status` key.
 
 Run the heal command once to move terminal tasks that predate the automatic seal:
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy queue file path in upgrade command -->
 ```bash
 aet state heal --apply .agents/work-queue.json
 ```
+<!-- aet-lint: on -->
 
 This appends terminal tasks to `.agents/work-history.jsonl` and removes them from the live queue. The command prints what it sealed.
 
@@ -87,14 +99,19 @@ This drops terminal records and rebuilds the blocker DAG. Re-add any approved pl
 
 For any task whose branch is already merged to the resolved trunk branch but the queue still shows it as active:
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy queue file path in upgrade command -->
 ```bash
 aet state record-merge <task-id> .agents/work-queue.json
 ```
+<!-- aet-lint: on -->
 
 Repeat for each merged task. The command resolves the real squash-merge SHA via `gh` (or a diff-equivalence fallback) and seals the task to history automatically.
 
 ### 7. Audit and clean up
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy queue file path and cleanup commands -->
 ```bash
 aet state audit .agents/work-queue.json
 ```
@@ -114,6 +131,7 @@ rm -f scripts/.aet-work-orchestrator.log
 git worktree list | grep -v '(main)'  # inspect before deleting
 git branch --merged main | grep -v '^\* main$'  # inspect before deleting
 ```
+<!-- aet-lint: on -->
 
 ### 8. Validate
 
@@ -146,7 +164,10 @@ The orchestrator symlinks each `source` (relative to the repo root) into `target
 
 ## Ongoing maintenance
 
+<!-- aet-lint: off -->
+<!-- Deliberate citation of legacy queue file in maintenance instructions -->
 - Never edit `.agents/work-queue.json` by hand.
+<!-- aet-lint: on -->
 - Use `aet state transition` for state changes.
 - Use `aet state record-merge` when a PR merges.
 - Run `aet state audit` when you suspect drift.

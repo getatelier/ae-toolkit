@@ -28,7 +28,7 @@ Promote an approved plan into the runnable sprint.
 
 1. Resolve `<plan>` to a plan file in `docs/plans/` (by path or by id).
 2. Validate the plan and refuse unless its stage is `plan-approved`.
-3. Add the task to `.agents/work-queue.json`, computing `ready` or `blocked` from `blocked_by`. No commit or push happens at intake; plan durability is deferred to terminal closure.
+3. Add the task to the open-work board, computing `ready` or `blocked` from `blocked_by`. No commit or push happens at intake; plan durability is deferred to terminal closure.
 4. Call the configured projection to relabel the issue to `aet:ready` or `aet:blocked`.
 
 **When to use:** When you deliberately choose to work on an approved plan now. This is the only human scheduling act in the loop.
@@ -43,7 +43,7 @@ AFK loop with OS-level process isolation and parallel execution. Invokes the orc
 
 2. **Pre-branch git hygiene:**
 
-   Before spawning the first task, the orchestrator ensures the trunk branch is clean and synchronized with its remote tracking branch. If the trunk has dirty non-plan paths, is behind its remote, or is ahead with any non-plan changes, the orchestrator prints an actionable reason and halts before creating any worktrees. Trunk hygiene is a mechanical durability hard-stop: the loop halts in unattended mode too (ADR-027). Mutations to `.agents/work-queue.json` and `.agents/work-history.jsonl` are ignored by the dirty check because the orchestrator writes them as part of normal operation; the `.agents/work-queue.json.lock` and `.agents/work-queue.lease` sidecars are ignored too — they linger on disk by design (the lock file is never unlinked; the lease self-reclaims on the next mutation after a crash). Untracked or modified `docs/plans/*.md` files are also ignored at intake: mid-sprint queue state is local-only until a terminal transition (merged/abandoned) persists it (ADR-054). Operators must treat untracked plans as load-bearing — `git clean -fdx` or git-following backups can discard in-flight work.
+   Before spawning the first task, the orchestrator ensures the trunk branch is clean and synchronized with its remote tracking branch. If the trunk has dirty non-plan paths, is behind its remote, or is ahead with any non-plan changes, the orchestrator prints an actionable reason and halts before creating any worktrees. Trunk hygiene is a mechanical durability hard-stop: the loop halts in unattended mode too (ADR-027). Mutations to task and history state are ignored by the dirty check because the orchestrator writes them as part of normal operation. Untracked or modified `docs/plans/*.md` files are also ignored at intake: mid-sprint queue state is local-only until a terminal transition (merged/abandoned) persists it (ADR-054). Operators must treat untracked plans as load-bearing — `git clean -fdx` or git-following backups can discard in-flight work.
 
 3. **Invoke the detached orchestrator:**
 
@@ -113,7 +113,7 @@ Run the full pipeline on a single plan with session-isolated stages. Replaces th
 5. Telemetry is written to `~/.aet/telemetry/{project-slug}/{date}/{run-id}/` and the path is printed on completion.
 6. On completion, the branch is ready for `aet-ship`.
 
-**Queue bookkeeping:** When the plan file corresponds to a task already tracked in `.agents/work-queue.json`, `run-one` records the task's `branch` and `worktree`, transitions it to `in_progress` at the start of the run, and transitions it to `awaiting_merge` on success. This lets `aet state record-merge` resolve the merge commit automatically after the PR ships. If the plan is not in the queue, or if `run-one` was spawned by `run` (`AET_TASK_ID` is set), the queue is left unchanged.
+**Queue bookkeeping:** When the plan file corresponds to a task already tracked on the board, `run-one` records the task's `branch` and `worktree`, transitions it to `in_progress` at the start of the run, and transitions it to `awaiting_merge` on success. This lets `aet state record-merge` resolve the merge commit automatically after the PR ships. If the plan is not in the queue, or if `run-one` was spawned by `run` (`AET_TASK_ID` is set), the queue is left unchanged.
 
 **When to use:** For one-off plans where you want the full pipeline but don't need a queue.
 
@@ -123,7 +123,7 @@ Record a verified merge in the work queue and close the plan file.
 
 **Procedure:**
 
-1. Resolve the task by ID from `.agents/work-queue.json` (or from `.agents/work-history.jsonl` if the task is already sealed).
+1. Resolve the task by ID from the open-work board (or from `.agents/work-history.jsonl` if the task is already sealed).
 2. Verify the merge commit is an ancestor of the resolved trunk/integration branch.
 3. Transition the task to `merged` and seal it to history.
 4. Closure no longer touches plan files (R-4/R-19): the merge record is the durable outcome. The plan path is no longer an accepted argument (R-3); the task is resolved by ID from the record.
@@ -142,13 +142,13 @@ Seal terminal tasks and remove their worktrees atomically. Repairs stale queue e
 
 **Procedure:**
 
-1. Run `aet state audit .agents/work-queue.json` to reconcile stored state against git for active (non-terminal) tasks only.
-2. Read `.agents/work-queue.json`
+1. Run `aet state audit` to reconcile stored state against git for active (non-terminal) tasks only.
+2. Read the active task records.
 3. Identify terminal tasks: status is `merged`, `done`, or `abandoned`. Normalize any `merge_verified` statuses to `merged`.
 4. Seal any legacy terminal tasks still present in the live queue:
 
    ```bash
-   aet state heal --apply .agents/work-queue.json
+   aet state heal --apply
    ```
 
    Terminal transitions now seal tasks to `.agents/work-history.jsonl` automatically. `aet state heal --apply` seals any remaining terminal tasks and reports what it did.
@@ -176,7 +176,7 @@ Reconcile stored state against git ground truth without mutating the queue. `aud
 
 **Procedure:**
 
-1. Run `aet state audit .agents/work-queue.json`
+1. Run `aet state audit`
 2. For each task, compute the expected status from git ground truth in order:
    - `merged` — `branch` or `merge_commit` is an ancestor of the resolved trunk branch
    - `in-progress` — local `branch` exists
@@ -213,7 +213,7 @@ Detect plan files that exist on disk but are not represented in the active work 
 
 **Procedure:**
 
-1. Read `.agents/work-queue.json` and collect all `plan_file` paths
+1. Read the active task board and collect all `plan_file` paths
 2. Read `.agents/work-history.jsonl` and collect all settled `plan_file` paths
 3. List all `docs/plans/*.md` files. Only atomic plans in this directory are considered; roadmaps and audits stored elsewhere are ignored.
 4. Identify any plan files whose path is not found in the queue's `plan_file` set **and** not found in the settled history's `plan_file` set
@@ -231,7 +231,7 @@ Detect tasks marked `done` or `merged` whose commits are not on the resolved tru
 
 **Procedure:**
 
-1. Read `.agents/work-queue.json`
+1. Read the active task board
 2. Run `git fetch origin`
 3. For each task with status `done`, `merged`, or `merge_verified`:
    a. If `merge_commit` is set and `git merge-base --is-ancestor <merge_commit> <trunk>` passes, skip (verified)
@@ -248,17 +248,17 @@ Mark a task as `merged` or `abandoned`. This is the only supported way to set a 
 
 **Procedure:**
 
-1. Read `.agents/work-queue.json` to determine the task's current status
+1. Read the task state to determine the task's current status
 2. Find the task by ID
 3. If the requested status is `merge_verified`:
    - STOP and print: `⛔ merge_verified is a legacy status. Use merged instead.`
 4. If setting to `merged`:
-   - Run `aet state validate <task_id> <current_status> merged .agents/work-queue.json`
+   - Run `aet state validate <task_id> <current_status> merged`
    - If validation fails, STOP and print the error message
-   - If validation passes, run `aet state transition <task_id> <current_status> merged .agents/work-queue.json`
+   - If validation passes, run `aet state transition <task_id> <current_status> merged`
 5. If setting to `abandoned`:
    - Require a `reason` argument (non-empty string)
-   - Run `aet state transition <task_id> <current_status> abandoned .agents/work-queue.json --reason="<reason>"`
+   - Run `aet state transition <task_id> <current_status> abandoned --reason="<reason>"`
    - Print: `⚠️ Task {id} marked abandoned. Reason: {reason}`
 
 **Rules:**
@@ -266,4 +266,4 @@ Mark a task as `merged` or `abandoned`. This is the only supported way to set a 
 - Never mark a task `merged` without verifying its merge_commit is on the resolved trunk branch
 - Never mark a task `done` manually; use `merged` (if on trunk) or `abandoned` (if cancelled)
 - Never mark a task `merge_verified`; it is normalized automatically to `merged`
-- Always use `aet state transition` instead of direct JSON mutation
+- Always use `aet state transition` instead of direct state mutation

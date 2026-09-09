@@ -32,7 +32,7 @@ The lifecycle has one source of truth per phase and one explicit handoff (ADR-06
 2. **Intake** — `aet sprint add` ingests the file into the task record's `spec`. This is the handoff.
 3. **Post-intake** — the task record's `spec` is the source of intent, stage, and terminal closure. The plan file may be rendered into a worktree as an ephemeral working copy; nothing writes back to it (R-4/R-19), so its contents are never authoritative.
 
-`.agents/work-queue.json` is an ephemeral, gitignored sprint board that holds only the active tasks you have explicitly chosen to work on. `.agents/work-history.jsonl` is an optional, gitignored execution log.
+The open-work board is an ephemeral sprint board that holds only the active tasks you have explicitly chosen to work on. `.agents/work-history.jsonl` is an optional, gitignored execution log.
 
 This means:
 
@@ -46,7 +46,7 @@ This means:
 | File                         | Role                                                    | Tracked         |
 | ---------------------------- | ------------------------------------------------------- | --------------- |
 | `docs/plans/{id}.md`         | Authoring artifact; rendered into worktrees as a working copy | Yes             |
-| `.agents/work-queue.json`    | Ephemeral sprint board: active tasks only               | No (gitignored) |
+| `refs/aet/tasks/*`           | Ephemeral sprint board: active tasks only               | No (git refs)   |
 | `.agents/work-history.jsonl` | Optional execution log for transitions and timing       | No (gitignored) |
 | `.agents/ledger.jsonl`       | Content-addressed provenance ledger                     | No (gitignored) |
 
@@ -58,7 +58,7 @@ While a batch or `run-one` is live, the orchestrator writes a run lease to `.age
 
 Use `--force` only to deliberately override a lease you know is stale, or to make an urgent manual edit during a batch. It prints a loud warning and can corrupt a live run, so prefer re-running after the batch finishes.
 
-Queue writes are also tamper-evident: a hand-edited `work-queue.json` fails closed on read for mutating commands. Run `aet state audit` to inspect the unverified queue against git ground truth, and `aet state heal --apply` to reconcile and restamp the envelope. Read-only commands like `status` warn and continue.
+Queue writes are also tamper-evident: a hand-edited state fails closed on read for mutating commands. Run `aet state audit` to inspect the unverified queue against git ground truth, and `aet state heal --apply` to reconcile and restamp the envelope. Read-only commands like `status` warn and continue.
 
 The ledger (`.agents/ledger.jsonl`) is also system-managed. It is append-only and content-addressed; the only supported way to keep it valid is to avoid hand-editing and let `aet ship close`, `aet state transition`, and `aet gate submit` write events through the `Ledger` class. If the ledger appears wrong, run `aet state audit` first — it reports queue-vs-git drift, which is the question a wrong-looking ledger usually stands in for.
 
@@ -72,13 +72,12 @@ The `git-refs` backend is `schema_version`-stamped (ADR-055) and treats the live
 4. Task reaches `awaiting_merge`.
 5. PR is opened and merged into the resolved trunk branch.
 6. `aet-ship` verifies the merge commit is on the resolved trunk branch.
-7. `aet-ship` records the terminal ledger event, appends closure to `.agents/work-history.jsonl`, and removes the task from `.agents/work-queue.json`. Plan files are transient working copies — closure no longer touches them (R-4/R-19).
+7. `aet-ship` records the terminal ledger event, appends closure to `.agents/work-history.jsonl`, and removes the task from the active sprint board. Plan files are transient working copies — closure no longer touches them (R-4/R-19).
 
 ## Task Backends
 
 `aet` routes queue I/O through a pluggable storage backend. The default
-`git-refs` backend stores queue state in git refs; the `json` backend stores it
-in `.agents/work-queue.json` for non-git contexts.
+`git-refs` backend stores queue state and the ledger in git refs under `refs/aet/*`.
 
 ### Configuration
 
@@ -307,7 +306,7 @@ aet state transition FEAT-001 <current_status> abandoned --reason="duplicate"
 
 - **Plans are the source of truth** — queue is a runtime view
 - **Explicit curation** — only `add` puts work in the sprint
-- **Gitignored sprint board** — `.agents/work-queue.json` and `.agents/work-history.jsonl` are never committed
+- **Ephemeral sprint board** — board state and `.agents/work-history.jsonl` are never committed
 - **System-managed ledger** — `.agents/ledger.jsonl` is append-only and content-addressed; never edit it by hand
 - **Forward-only state** — transitions are recorded by code and trusted on read
 - **Queue-unaware pipeline** — individual skills know nothing about the queue
