@@ -755,7 +755,7 @@ Generate a retro from AET telemetry, split by project-level and AET-level fixes.
 
 ## `aet status`
 
-Show work queue status.
+Show work queue status, active detached runs, systemic circuit breaker warnings, and last-run telemetry diagnostics.
 
 ### Options
 
