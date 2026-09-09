@@ -22,7 +22,7 @@ aet-work-*.log
 .venv
 .coverage
 # Active/draft plan scratch
-docs/plans/active/
+docs/plans
 .agents/aet-queue
 .agents/aet-queue.lease
 .agents/ledger.jsonl
