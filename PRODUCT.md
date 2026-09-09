@@ -4,9 +4,9 @@ An integrated agentic engineering system. Skills are directories of instructions
 
 ---
 
-## Current Version: 1.13.0
+## Current Version: 1.14.0
 
-Last updated: 2026-08-28
+Last updated: 2026-09-09
 
 ---
 
@@ -24,7 +24,7 @@ Turn ideas into actionable, validated plans.
 
 Run plans with isolation, quality gates, and traceability.
 
-- **aet-work** — Work queue management and sequential or parallel task execution. Spawns isolated sessions per task in git worktrees, with curated sprint intake, evidence-gated completion, live-run visibility in the panel, usage-cost telemetry, a git-refs task store that travels with the repository, detached-only run invocation with bounded completion reports, hybrid liveness supervision that lets a quiet-but-working session keep running, night-shift runtime resilience, configurable branch models including single-PR integration mode, shadow posture for projects that keep their board entirely local, multi-machine state sync via `refs/aet/*`, run-scoped handoff note injection, portable plan specs carried in the task record, recovery of missing stage verdicts without re-running the whole stage, one integration branch per PRD so concurrent epics never share a pull request, plan-quality validation at every entry to the board rather than only at `aet sprint add`, a single admission policy shared by every route onto the board, correction of a queued plan by editing the file and re-adding it, and a run that stops and asks to be resumed when it meets a provider rate limit instead of retrying into the same wall.
+- **aet-work** — Work queue management and sequential or parallel task execution. Spawns isolated sessions per task in git worktrees, with curated sprint intake, evidence-gated completion, live-run visibility in the panel, usage-cost telemetry, a git-refs task store that travels with the repository, detached-only run invocation with bounded completion reports, hybrid liveness supervision that lets a quiet-but-working session keep running, night-shift runtime resilience, configurable branch models including single-PR integration mode, shadow posture for projects that keep their board entirely local, multi-machine state sync via `refs/aet/*`, run-scoped handoff note injection, portable plan specs carried in the task record, recovery of missing stage verdicts without re-running the whole stage, one integration branch per PRD so concurrent epics never share a pull request, plan-quality validation at every entry to the board rather than only at `aet sprint add`, a single admission policy shared by every route onto the board, correction of a queued plan by editing the file and re-adding it, a run that stops and asks to be resumed when it meets a provider rate limit instead of retrying into the same wall, an epic declared once in the queue envelope rather than inferred on every invocation, preflight checks that refuse in the foreground before a run detaches, and a liveness check that reads process start time so a recycled process id is never reported as an active run.
 - **aet-implement** — Fresh-session implementation from an approved `plan.md`. The tests it runs are chosen from what the change actually touches, derived from the code rather than a list somebody has to keep up to date, and it falls back to the whole suite whenever the change cannot be narrowed safely.
 - **aet-tdd** — Test-driven development with red-green-refactor loops and vertical tracer bullets.
 
@@ -41,7 +41,7 @@ Verify code before it ships.
 
 Land code cleanly and document releases.
 
-- **aet-ship** — Pre-merge validation, PR creation, merge verification, direct merge via `aet ship merge`, provider-specific merge-guard harness detection, squash-merge verification fallback, stacked PR split and trunk substitution, and optional branch deletion on close. Resolves a task id against the record across open, gate, close, merge, split, and verify; plan paths are no longer accepted. Which verdict a stage must show is read from the workflow definition rather than kept as a separate list, and a gate's default routing derives from the plan's work class.
+- **aet-ship** — Pre-merge validation, PR creation, merge verification, direct merge via `aet ship merge`, provider-specific merge-guard harness detection, squash-merge verification fallback, stacked PR split and trunk substitution, and optional branch deletion on close. Resolves a task id against the record across open, gate, close, merge, split, and verify; plan paths are no longer accepted. Which verdict a stage must show is read from the workflow definition rather than kept as a separate list, and a gate's default routing derives from the plan's work class. `aet ship open-epic` runs the gate and opens the pull request for an epic branch. The gate, the conflict detection and the commit count all run against the branch being merged rather than against whichever branch the checkout happens to be on.
 - **aet-release-prep** — Release preparation: commit analysis, changelog updates, and version bump suggestions.
 - **aet-sync-docs** — Sync the PRD to reflect what was actually built.
 
@@ -49,7 +49,7 @@ Land code cleanly and document releases.
 
 Keep projects and the toolkit itself healthy.
 
-- **aet-setup** — Bootstrap or upgrade projects with best-practice documentation, AI guardrails, optional pre-push hook gates, and `aet setup verify` / `aet setup bootstrap` helpers for trunk resolution and required `.gitignore` entries. `verify` reports both directions of drift after an upgrade: an entry the toolkit needs that the file is missing, and an entry naming a file the toolkit no longer writes.
+- **aet-setup** — Bootstrap or upgrade projects with best-practice documentation, AI guardrails, optional pre-push hook gates, and `aet setup verify` / `aet setup bootstrap` helpers for trunk resolution and required `.gitignore` entries. `verify` reports both directions of drift after an upgrade: an entry the toolkit needs that the file is missing, and an entry naming a file the toolkit no longer writes. It also prints the active epic declaration beside the resolved trunk and integration branch.
 - **aet-upgrade** — Dependency and framework upgrade planning with breaking-change analysis.
 - **aet-bug-report** — Structured bug investigation and fixing.
 - **aet-evolve** — System evolution through retrospectives and rule updates. Mines telemetry archives and narrative reports for cross-project patterns, and includes `aet-retro` for automated post-run review.
@@ -63,6 +63,10 @@ Carry context and lessons across runs.
 - **aet handoff** — Writes and reads run-scoped handoff notes so agents can pass context between sessions.
 - **aet sprint intake** — Reads `aet:sprint` issues from GitHub, checks each candidate against the dependency graph, and admits it or refuses with the blocking reason named.
 - **aet state reconcile** — Reports and clears refs stranded on a clone, so a board that drifted can be brought back in line without hand-editing refs.
+- **aet epic** — Declares the active epic, shows it, and clears it. The declaration holds the integration branch, the pull request title, and a body file, so an epic pull request has somewhere to live before it ships.
+- **aet breaker** — Shows the tracked failure signatures behind the circuit breaker and resets it. Clearing a tripped breaker no longer needs a low-level git ref command.
+- **aet docs lint** — Checks a fact a document copies from the tree against the tree itself: a retired data path, an architecture-decision relation, or a code symbol an anchor names. A deliberate divergence is declared with an escape marker rather than left to decay.
+- **aet state audit** — Reconciles stored task state against git and names any task record carrying no plan spec.
 
 ---
 
@@ -83,6 +87,19 @@ Carry context and lessons across runs.
 ---
 
 ## What's New
+
+### What's New in v1.14.0
+
+- **An epic is declared once instead of repeated on every run** — `aet epic set` records the integration branch, the pull request title, and a body file. Runs read the declaration, and each task is stamped with the branch it belongs to. A task that would integrate somewhere else halts and names the mismatch. `aet ship open-epic` opens the epic pull request without repeating any flag.
+- **A run that cannot start says so** — the circuit breaker, the queue, the agent binary, and the worktree base are all checked before the run detaches. A failed check prints the reason and exits non-zero. Previously the command announced a started run and returned success while the background process gave up.
+- **A blocked orchestrator is visible** — `aet status` shows a banner when the circuit breaker is tripped, and names a previous run that ended in failure. Status used to report tasks as ready and no failures while the orchestrator was hard-blocked. `aet breaker show` and `aet breaker reset` inspect and clear the breaker.
+- **Checks read evidence instead of a cheap stand-in** — a finished run whose process id was reused is no longer reported as active. A branch that was created and never touched no longer counts as work in progress. Ship gates the branch it is about to merge, not whichever branch the checkout is on. A verdict carrying a placeholder summary no longer satisfies a stage.
+- **Documents are checked against the code they describe** — a retired data path in skill prose, a broken relation between architecture decisions, and a code anchor whose symbol no longer exists are all caught by `aet docs lint`. A divergence that is deliberate is declared in the document rather than silently tolerated.
+- **Draft plans stay out of the working tree** — plans in progress live in an ignored directory and settled plans are archived in git. A machine that never held the plan file can still close the task, so distributed execution no longer trips on a missing document.
+- **The agent CLI that started the run drives the work** — a Claude Code session could previously dispatch its tasks to whichever other agent CLI happened to be installed. The calling agent is now detected from the running process, and a run started outside a recognised agent asks for the binary rather than guessing.
+- **Git no longer hangs on a key it cannot unlock** — a repository whose remote needs an SSH key that is not loaded used to stall for minutes with nobody able to answer the prompt. It now fails in seconds and says why. A deploy key configured for a CI runner is left untouched.
+
+**Upgrading from 1.13.x:** upgrade the skills alongside the CLI. Move draft plans into `docs/plans/active/`; `aet setup bootstrap` adds the ignore entry and the old flat path still resolves, so nothing has to move at once. `aet docs lint` gains three rules, one of which runs at error severity, so a repository whose architecture-decision records lack frontmatter will fail the lint until they carry it. Adapter selection no longer falls back to whatever is on `PATH`, so a run started outside a recognised agent CLI needs `--cli-bin` or `AET_CLI_BIN`. Declaring an epic is optional and existing configuration still works.
 
 ### What's New in v1.13.0
 
