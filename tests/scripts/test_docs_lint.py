@@ -1162,6 +1162,79 @@ def test_code_anchor_escaped_line_anchor_passes(tmp_path):
     assert docs_lint.lint_docs(rules, repo) == []
 
 
+def test_retired_path_absent_forbids_value(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "retired_path_absent", "target": "README.md", "reason": "No retired paths", "value": "foo"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "'value' is not allowed for retired_path_absent" in violations[0][1]
+
+
+def test_retired_path_absent_passes_on_clean_prose(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text("# Clean\n\nNo retired paths here.\n", encoding="utf-8")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "retired_path_absent", "target": "README.md", "reason": "No retired paths"}],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_retired_path_absent_fails_when_retired_path_present(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text("# Bad\n\nRefers to .agents/work-queue.json directly.\n", encoding="utf-8")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "retired_path_absent", "target": "README.md", "reason": "No retired paths"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert violations[0][0].name == "README.md"
+    assert "No retired paths" in violations[0][1]
+    assert ".agents/work-queue.json" in violations[0][1]
+
+
+def test_retired_path_absent_honors_escape_marker(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Migration
+
+            <!-- aet-lint: off -->
+            This document explains migrating from .agents/work-queue.json to git refs.
+            <!-- aet-lint: on -->
+
+            Clean section.
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "retired_path_absent", "target": "README.md", "reason": "No retired paths"}],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
 def test_code_anchor_python_symbol_resolves(tmp_path):
     """A symbol defined as a function, class, or assignment resolves via AST."""
     repo = tmp_path / "repo"
@@ -1442,6 +1515,51 @@ def test_code_anchor_python_syntax_error(tmp_path):
     violations = docs_lint.lint_docs(rules, repo)
     assert len(violations) == 1
     assert "cannot parse Python file 'broken.py'" in violations[0][1]
+
+
+def test_retired_path_absent_picks_up_new_constant_entry_without_lint_edit(tmp_path, monkeypatch):
+    """A path added to AET_RETIRED_IGNORED_PATHS is refused without editing docs_lint."""
+    from aet import worktree
+
+    fake_retired = set(worktree.AET_RETIRED_IGNORED_PATHS) | {".agents/brand-new-retired-path.json"}
+    monkeypatch.setattr(worktree, "AET_RETIRED_IGNORED_PATHS", fake_retired)
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text("# Doc\n\nRefers to .agents/brand-new-retired-path.json here.\n", encoding="utf-8")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "retired_path_absent", "target": "README.md", "reason": "No retired paths"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert ".agents/brand-new-retired-path.json" in violations[0][1]
+
+
+def test_retired_path_absent_on_directory_scans_all_markdown_files(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    skills = repo / "skills"
+    skills.mkdir()
+    clean = skills / "clean.md"
+    clean.write_text("# Clean\n", encoding="utf-8")
+    nested = skills / "nested"
+    nested.mkdir()
+    bad = nested / "bad.md"
+    bad.write_text("# Bad\n\nRefers to .agents/work-queue.json\n", encoding="utf-8")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "retired_path_absent", "target": "skills", "reason": "No retired paths in skills"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert violations[0][0].name == "bad.md"
+    assert ".agents/work-queue.json" in violations[0][1]
 
 
 if __name__ == "__main__":

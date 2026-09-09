@@ -23,6 +23,7 @@ VALID_RULE_TYPES = frozenset(
         "unique_live_subject",
         "adr_corpus_integrity",
         "code_anchor_resolves",
+        "retired_path_absent",
     }
 )
 
@@ -643,13 +644,36 @@ def _validate_rule(raw: object, index: int) -> dict:
         if "value" not in rule:
             raise RuleError(index, f"'value' is required for {rtype}")
         rule["value"] = _normalize_values(rule["value"])
-    if rtype in ("unique_live_subject", "adr_corpus_integrity", "code_anchor_resolves") and "value" in rule:
+    no_value_rules = ("unique_live_subject", "adr_corpus_integrity", "code_anchor_resolves", "retired_path_absent")
+    if rtype in no_value_rules and "value" in rule:
         raise RuleError(index, f"'value' is not allowed for {rtype}")
     severity = rule.get("severity", "error")
     if severity not in ("error", "warning"):
         raise RuleError(index, f"invalid severity '{severity}', must be 'error' or 'warning'")
     rule["severity"] = severity
     return rule
+
+
+def _check_retired_paths(path: Path, text: str, rule: dict, reason: str) -> str | None:
+    """Evaluate a ``retired_path_absent`` rule against *text*."""
+    text = strip_lint_escapes(text)
+    section = rule.get("section")
+    haystack = text
+    section_note = ""
+    if section:
+        section_body = _extract_section(text, section)
+        if section_body is None:
+            return f"{reason} (section not found: {section})"
+        haystack = section_body
+        section_note = f" in section '{section}'"
+
+    from aet import worktree
+
+    present = [p for p in sorted(worktree.AET_RETIRED_IGNORED_PATHS) if p in haystack]
+    if present:
+        plural = "" if len(present) == 1 else "s"
+        return f"{reason} (found retired path{plural} {present!r}{section_note})"
+    return None
 
 
 def _check_text(path: Path, text: str, rule: dict, reason: str) -> str | None:
@@ -751,7 +775,7 @@ def lint_docs(
                 violations.extend(_evaluate_code_anchor_resolves(target_path, reason, repo_root))
             continue
 
-        if target_path.is_dir() and rtype in ("must_contain", "must_not_contain"):
+        if target_path.is_dir() and rtype in ("must_contain", "must_not_contain", "retired_path_absent"):
             found_any = False
             for md_path in sorted(target_path.rglob("*.md")):
                 found_any = True
@@ -761,7 +785,10 @@ def lint_docs(
                 except (OSError, UnicodeDecodeError) as exc:
                     violations.append((rel_md, f"{reason} (cannot read file: {exc})"))
                     continue
-                message = _check_text(md_path, text, rule, reason)
+                if rtype == "retired_path_absent":
+                    message = _check_retired_paths(md_path, text, rule, reason)
+                else:
+                    message = _check_text(md_path, text, rule, reason)
                 if message:
                     violations.append((rel_md, message))
             if not found_any:
@@ -777,7 +804,10 @@ def lint_docs(
             violations.append((rel_target, f"{reason} (cannot read file: {exc})"))
             continue
 
-        message = _check_text(target_path, text, rule, reason)
+        if rtype == "retired_path_absent":
+            message = _check_retired_paths(target_path, text, rule, reason)
+        else:
+            message = _check_text(target_path, text, rule, reason)
         if message:
             violations.append((rel_target, message))
 

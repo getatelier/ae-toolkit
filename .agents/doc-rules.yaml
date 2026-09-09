@@ -272,3 +272,20 @@ rules:
   - type: code_anchor_resolves
     target: docs/prds
     reason: "Code anchors in PRDs must resolve to valid files and symbols, not line numbers (dcl-05)"
+
+  # dcl-04: Retired data paths are refused in prose (R-2, R-5)
+  - type: retired_path_absent
+    target: skills
+    reason: "Skill prose must not reference retired data paths (R-2)"
+
+  - type: retired_path_absent
+    target: .agents/templates
+    reason: "Template documents must not reference retired data paths (R-2)"
+
+  - type: retired_path_absent
+    target: .agents/commands
+    reason: "Command documentation must not reference retired data paths (R-2)"
+
+  - type: retired_path_absent
+    target: AGENTS.md
+    reason: "AGENTS.md must not reference retired data paths (R-2)"
