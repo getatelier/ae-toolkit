@@ -84,9 +84,11 @@ Dependency rationale: one serialized chain (frh-01→02→03→…→08→09→1
 
 ## Technical Notes
 
-- **Verified anchors (2026-07-09):** non-atomic writer `aet-state:48-51`; unsandboxed spawn `orchestrator:764` (no `start_new_session`); zero call sites for `stage_record`/`loop_record`/`test_run_record`/`learning_candidate_record`; `/tmp/aet-reports/{task_id}` at `pipeline.py:141`; status shim + "until fods-06" comment at `queue.py:50-71,198-220`; `transition` in all three `lib/backends/*.py`; installer at `aet-setup/bin/install-aet-binaries`; no `fcntl`/`flock` anywhere in the codebase.
-- **Locking:** `fcntl.flock` on a sidecar lockfile next to the queue (`.agents/work-queue.json.lock`), exposed as a context manager in `lib/queue.py`; every load→mutate→save cycle (aet-state commands, orchestrator batch loop, sync/init-queue) runs inside it. Keep stdlib-only.
-- **Doc correction rider:** `aet-work/references/context-isolation.md:148` claims "No lock file, no flock … is required" — false in batch mode (up to 8 children invoke `set-stage` concurrently). frh-01/02 must update this claim.
+<!-- aet-lint: off -->
+- **Verified anchors (2026-07-09):** non-atomic writer replaced by `save_queue` in `src/aet/queue.py`; process isolation handled by `_spawn_process_group` in `src/aet/cli/orchestrator.py`; zero call sites for `stage_record`, `loop_record`, `test_run_record`, `learning_candidate_record`; evidence directory configured in `src/aet/evidence.py`; status normalization in `src/aet/queue.py`; `TaskBackend` in `src/aet/backends/task_backend.py`; installer in `src/aet/cli/main.py`.
+<!-- aet-lint: on -->
+- **Locking:** `fcntl.flock` on a sidecar lockfile next to the queue (`.agents/work-queue.json.lock`), exposed as `queue_lock` context manager in `src/aet/queue.py`; every load→mutate→save cycle (aet-state commands, orchestrator batch loop, sync/init-queue) runs inside it. Keep stdlib-only.
+- **Doc correction rider:** `skills/aet-work/references/context-isolation.md` claims "No lock file, no flock … is required" — false in batch mode (up to 8 children invoke `set-stage` concurrently). frh-01/02 must update this claim.
 - **Process groups:** `start_new_session=True` on spawn; timeout path escalates SIGTERM→SIGKILL via `os.killpg` on the process group so the agent CLI grandchild dies with the child orchestrator.
 - **Evidence home:** mirror telemetry's pattern — `~/.aet/reports/<project-slug>/<task-id>/<stage>.json` with `AET_REPORTS_DIR` override; project slug via the existing `derive_project_slug`. Verdict schemas are checked-in JSON Schema files; validation is stdlib (no jsonschema dep) — a small required-keys/type checker in `lib/`.
 - **Telemetry decision (clarified with owner):** deterministic + derive. Orchestrator emits `stage_record`; `test_run_record` is derived from the QA verdict JSON (frh-10); `learning_candidate_record` is emitted by `aet-retro` (frh-11); `loop_record` is deleted as unknowable without session introspection.
@@ -107,7 +109,7 @@ _Recorded: 2026-07-10 — Branch: frh-15-curated-flow-intake_
 
 ### Changed from plan (frh-15)
 
-- **Implementation locus (tasks 1–5):** frh-15 scoped an 8-file curated-intake implementation, but the production semantics (`build_blocks` in `aet-work/lib/queue.py`, `add` parking at `ready`/`blocked` and rebuilding edges, `plan_parser` recording the real initial state, `sync` no longer auto-adding, and the explicit `aet-work add` handoff in both skill texts) were already present on `origin/main` via the earlier commit `a85ab7b` ("curated sprint intake") before this branch was cut. The frh-15 branch therefore narrowed to **task 6 — the regression contract** (the five named behavior tests) plus plan-footer bookkeeping. Feature behavior matches the story map; only where the code lives differs (upstream commit, not the frh-15 branch). Task 7 (merge + verify) remains owned by `aet-ship`.
+- **Implementation locus (tasks 1–5):** frh-15 scoped an 8-file curated-intake implementation, but the production semantics (`build_blocks` in `src/aet/queue.py`, `add` parking at `ready`/`blocked` and rebuilding edges, `plan_parser` recording the real initial state, `sync` no longer auto-adding, and the explicit `aet-work add` handoff in both skill texts) were already present on `origin/main` via the earlier commit `a85ab7b` ("curated sprint intake") before this branch was cut. The frh-15 branch therefore narrowed to **task 6 — the regression contract** (the five named behavior tests) plus plan-footer bookkeeping. Feature behavior matches the story map; only where the code lives differs (upstream commit, not the frh-15 branch). Task 7 (merge + verify) remains owned by `aet-ship`.
 
 ---
 

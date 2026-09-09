@@ -20,7 +20,7 @@ defect — the fixes are guard/process changes, planned here rather than hacked 
 
 ## Non-Goals
 
-- **No change to `check_main_hygiene`'s detection logic** (`worktree.py:335`) — it
+- **No change to `check_base_hygiene`'s detection logic** (`src/aet/worktree.py`) — it
   already correctly flags a dirty tree and `main` ahead/behind `origin/main`.
 - **No push automation** — committing/pushing stays the operator's action; we only
   refuse to proceed when durability is not established.
@@ -56,11 +56,11 @@ defect — the fixes are guard/process changes, planned here rather than hacked 
 ## Technical Notes
 
 **Key decision (R-1) — remove the unattended soften for durability-critical
-conditions.** `enforce_main_hygiene` (`orchestrator:192`) currently returns `True`
+conditions.** `enforce_base_hygiene` (`src/aet/cli/orchestrator.py`) currently returns `True`
 with a warning whenever `AET_EXECUTION_MODE=unattended`. The soften's original
 purpose was that batch runs dirty the tree by mutating the queue file between
-tasks — but `check_main_hygiene` **already excludes** the queue file and its
-`.lock`/`.lease` sidecars (`worktree.py:346–351`), so failing closed in unattended
+tasks — but `check_base_hygiene` **already excludes** the queue file and its
+`.lock`/`.lease` sidecars (`src/aet/worktree.py`), so failing closed in unattended
 no longer false-positives on normal AFK operation. And no-remote projects don't
 trigger the ahead check (`rev-list origin/main..main` errors → counted as 0). So
 the soften is now largely obsolete for these conditions.

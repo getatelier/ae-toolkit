@@ -136,14 +136,14 @@ consumer, and per-command metadata would spread it across 35 modules for no gain
 `docs/CLI.md` markers (`[default:`, `*str*`, `--flag <str>`) returned 0 matches —
 the `t2r-11-generated-cli-reference` cleanup removed those. A second scan for
 *hand-written* option tables found **one surviving violation**:
-`skills/aet-evolve/references/aet-retro.md:30` carries a `## Options` section
+`skills/aet-evolve/references/aet-retro.md` carries a `## Options` section
 hand-copying six `aet retro` and `aet metrics` flags with their defaults. It is
 currently accurate, which is exactly why it is dangerous: nothing keeps it that
 way.
 
 Everything else in the ~25 skill files matching `--flag` is one of: a third-party
 flag (`git`, `pytest`, `gh`) outside the `aet` tree, or semantics absent from
-`--help` — e.g. `skills/aet-work/references/queue-commands.md:70`, "`--follow`
+`--help` — e.g. `skills/aet-work/references/queue-commands.md`, "`--follow`
 does **not** tail or stream the run log; it waits silently". Both stay. R-4 is
 therefore one removal plus a durable guard.
 

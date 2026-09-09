@@ -120,8 +120,8 @@ by measurement instead of anecdote.
   test-ish commands → `unknown`. Kept deliberately simple — this repo's own
   commands (`python3 -m pytest tests/ -q`, `make validate`) must classify as
   `full-suite`, and `pytest tests/test_panel_serve.py` as `impact`.
-- Verdict-derived records (`_emit_test_run_from_verdict`,
-  `aet-work/bin/orchestrator:369`) have a single timestamp (verdict
+- Verdict-derived records (`_emit_test_run_from_verdict` in
+  `src/aet/cli/orchestrator.py`) have a single timestamp (verdict
   `generated_at`): duration is unmeasurable there and must become `null`,
   which requires `test_run_record` to accept null start/end.
 - `mine-learnings` currently scans `*.md` under telemetry run dirs; verdicts

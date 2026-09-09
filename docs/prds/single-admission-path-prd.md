@@ -59,11 +59,11 @@ next ADR that changes admission policy has one edit site instead of three.
   authored for the disposition.
 - **Changing what the validation suite checks.** `plan_validate` keeps its
   current checks. Only where it is invoked from changes.
-- **Removing display or fallback readers of the footer.** `gate.py:211`
-  categorizes plans for display, `context.py:286-335` reports stage and is
+- **Removing display or fallback readers of the footer.** `src/aet/gate.py`
+  categorizes plans for display, `src/aet/cli/context.py` reports stage and is
   mostly the separate PRD lifecycle, and `verifier.read_plan_stage` is consumed
-  at `orchestrator.py:304` and `:3882` only after `task.get("stage")` has been
-  tried. That last one is the third input `CONTEXT.md:36` names; it degrades to
+  in `src/aet/cli/orchestrator.py` only after `task.get("stage")` has been
+  tried. That last one is the third input `CONTEXT.md` names; it degrades to
   a breadcrumb once the gating doors close, and its own docstring already says
   it is advisory. ADR-019 permits breadcrumb reads. All are out of scope.
 - **The stale `.agents/work-queue.json` reference audit.** Fifteen files across
@@ -229,7 +229,7 @@ Run against `CONTEXT.md`, the ADR set, and the code on 2026-08-27.
 
 ## Divergence Summary — adm-01-single-admission-operation
 
-_Recorded: 2026-08-27 — Branch: adm-01-single-admission-operation_
+*Recorded: 2026-08-27 — Branch: adm-01-single-admission-operation*
 
 ### Deferred
 
@@ -237,7 +237,7 @@ _Recorded: 2026-08-27 — Branch: adm-01-single-admission-operation_
 
 ## Divergence Summary — adm-02-backlog-stops-gating-on-the-footer
 
-_Recorded: 2026-08-27 — Branch: adm-02-backlog-stops-gating-on-the-footer_
+*Recorded: 2026-08-27 — Branch: adm-02-backlog-stops-gating-on-the-footer*
 
 ### Changed from plan
 
@@ -249,6 +249,5 @@ _Recorded: 2026-08-27 — Branch: adm-02-backlog-stops-gating-on-the-footer_
 
 ---
 
-_Stage: synced_
-_Next step: run `aet-ship`_
-
+*Stage: synced*
+*Next step: run `aet-ship`*

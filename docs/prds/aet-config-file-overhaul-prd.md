@@ -169,8 +169,8 @@ that teach both adoption modes.
   added at lines 64-66; R-3 needs a config-specific identity that skips the
   label, not a change to the shared function's telemetry consumers).
 - The `--base` Typer option exists only on the orchestrator's internal CLI
-  (`src/aet/cli/orchestrator.py:3090-3094`); the dispatcher
-  (`src/aet/cli/main.py:280-334`) must accept and forward it.
+  (`src/aet/cli/orchestrator.py`); the dispatcher
+  (`src/aet/cli/main.py`) must accept and forward it.
 - `aet configure-backend` (`src/aet/cli/configure_backend.py`) already writes
   `task_backend` to in-tree or external (`--external-config`). R-5 extends
   this surface; whether it stays `configure-backend` or becomes

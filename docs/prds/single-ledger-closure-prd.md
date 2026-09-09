@@ -9,8 +9,8 @@ resurrect as `queued` because two of those stores disagree inside the same
 file. The structural review traced this to a single generative cause:
 mechanical closure duties live in prose, and prose is a probabilistic
 executor — the orchestrator itself asks the stage agent to write the plan
-footer (`src/aet/cli/orchestrator.py:460`, dup `:1069`) while
-`update_plan_footer()` (`src/aet/queue.py:602`) sits wired only to terminal
+footer in `src/aet/cli/orchestrator.py` while
+plan footer updates sat wired only to terminal
 closure. The beads evaluation then broke the review's own durability
 correction: rev 4 put queue and history in `~/.aet/{slug}/`, which does not
 survive configuration 2 (one operator across a laptop and a cloud box).
@@ -87,7 +87,7 @@ this PRD are mutually exclusive work).
   is rejected by the write path so readers can filter reconstructed events.
 - **R-3**: Concurrent appends commute. The union of event rows is the
   correct merge regardless of writer or order. The envelope's chained
-  `content_hash` (`git_refs_backend.py:152`) — non-commutative by
+  content hash — non-commutative by
   construction over a changing task-ref set — is removed from the
   operational path; the `StampMismatch` refusal it powers goes with it.
 - **R-4**: State travels with the repo. Queue and ledger live as git refs
@@ -105,7 +105,7 @@ this PRD are mutually exclusive work).
   reaches a terminal state routes through this path — the invocation-drift
   hole (flows that never ran the code closure) is closed structurally, and
   the orchestrator's prompt-delegated footer duty
-  (`orchestrator.py:460`, `:1069`) is deleted from the prompt template.
+  in `src/aet/cli/orchestrator.py` is deleted from the prompt template.
 - **R-6**: `aet state set-stage` owns mid-pipeline footer atomicity: the
   footer write and the queue stage write happen in one code path via the
   existing `update_plan_footer()` primitive, replacing the prompt
@@ -199,9 +199,8 @@ this PRD are mutually exclusive work).
   The beads evaluation's finding stands: the backend is two changes from
   being the answer (push; replace the non-commutative chain with
   content-addressed events).
-- **Closure primitives already exist**: `update_plan_footer()`
-  (`queue.py:602`) is tested and wired only to terminal closure
-  (`queue.py:672`); `aet state set-stage` (`aet_state.py:1329`) writes the
+- **Closure primitives already exist**: plan footer update primitives
+  are tested and wired only to terminal closure; `aet state set-stage` (`src/aet/cli/state.py`) writes the
   queue stage but not the footer. The work is wiring and deleting prose,
   not new mechanism — the study sizes T1's closure duties at M.
 - **What the ledger does NOT hold**: verdicts, evidence, gate payloads,
@@ -353,6 +352,7 @@ The following file-list expectations from the plan did not require modification:
 
 No meaningful behavioral divergences were introduced.
 
+<!-- aet-lint: off -->
 ## Divergence Summary — slc-04
 
 *Recorded: 2026-08-10 — Branch: slc-04-mechanical-closure-transaction*
@@ -365,7 +365,7 @@ The closure transaction is implemented in `aet_state._apply_transition` and
 
 - `src/aet/cli/ship.py` was not modified. `aet ship close` already delegates
   to the record-merge closure path; the single-transaction logic landed in
-  `src/aet/cli/aet_state.py`.
+  `src/aet/cli/state.py`.
 - Atomic ref updates required modifying `src/aet/backends/git_refs_backend.py`
   (single `git update-ref --stdin` transaction), which was not listed in the
   plan's file list.
@@ -379,6 +379,7 @@ The closure transaction is implemented in `aet_state._apply_transition` and
   stage.
 
 No meaningful behavioral divergences were introduced.
+<!-- aet-lint: on -->
 
 ---
 

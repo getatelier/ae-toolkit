@@ -1072,5 +1072,377 @@ def test_must_contain_inside_escaped_span_fails(tmp_path):
     assert "README must contain RequiredKeyword" in violations[0][1]
 
 
+def test_code_anchor_rule_validation(tmp_path):
+    """code_anchor_resolves is valid and refuses value field."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "value": "disallowed",
+                "reason": "Code anchors must resolve",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "'value' is not allowed for code_anchor_resolves" in violations[0][1]
+
+
+def test_code_anchor_line_anchor_refused(tmp_path):
+    """A path:NN line anchor is refused by code_anchor_resolves."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "test-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Test PRD
+
+            Referencing logic at `src/aet/foo.py:123` is obsolete.
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors in PRDs must resolve to a symbol, not a line",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "line anchor forbidden" in violations[0][1]
+    assert "src/aet/foo.py:123" in violations[0][1]
+
+
+def test_code_anchor_escaped_line_anchor_passes(tmp_path):
+    """A line anchor within an escape marker is exempt."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "test-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Test PRD
+
+            <!-- aet-lint: off -->
+            Historical reference: `src/aet/foo.py:123`
+            <!-- aet-lint: on -->
+
+            Clean prose.
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors must resolve to a symbol",
+            }
+        ],
+    )
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_code_anchor_python_symbol_resolves(tmp_path):
+    """A symbol defined as a function, class, or assignment resolves via AST."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    src = repo / "src" / "pkg"
+    src.mkdir(parents=True)
+    py_file = src / "worker.py"
+    py_file.write_text(
+        textwrap.dedent(
+            """\
+            CONFIG_FLAG = True
+
+            class ProcessManager:
+                def start(self):
+                    pass
+
+            def execute_job():
+                pass
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "worker-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Worker PRD
+
+            | Symbol | Module | Note |
+            | --- | --- | --- |
+            | `execute_job`, `CONFIG_FLAG` | `src/pkg/worker.py` | Top level function and constant |
+            | `ProcessManager.start` | `src/pkg/worker.py` | Method on manager |
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors must resolve to a symbol",
+            }
+        ],
+    )
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_code_anchor_python_symbol_in_comment_refused(tmp_path):
+    """A symbol mentioned only in a comment does not resolve (AST excludes comments)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    src = repo / "src" / "pkg"
+    src.mkdir(parents=True)
+    py_file = src / "worker.py"
+    py_file.write_text(
+        textwrap.dedent(
+            """\
+            # Here was once old_deprecated_worker()
+            def new_worker():
+                pass
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "worker-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Worker PRD
+
+            | Symbol | Module | Note |
+            | --- | --- | --- |
+            | `old_deprecated_worker` | `src/pkg/worker.py` | The worker |
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors must resolve to a symbol",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "symbol 'old_deprecated_worker' does not resolve in 'src/pkg/worker.py'" in violations[0][1]
+
+
+def test_code_anchor_python_symbol_in_docstring_refused(tmp_path):
+    """A symbol mentioned only in a docstring does not resolve (AST excludes docstrings)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    src = repo / "src" / "pkg"
+    src.mkdir(parents=True)
+    py_file = src / "worker.py"
+    py_file.write_text(
+        textwrap.dedent(
+            """\
+            \"\"\"Module for dead_helper_function.\"\"\"
+            def live_helper():
+                pass
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "worker-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Worker PRD
+
+            | Symbol | Module | Note |
+            | --- | --- | --- |
+            | `dead_helper_function` | `src/pkg/worker.py` | The helper |
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors must resolve to a symbol",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "symbol 'dead_helper_function' does not resolve in 'src/pkg/worker.py'" in violations[0][1]
+
+
+def test_code_anchor_missing_file_distinct_error(tmp_path):
+    """A missing anchored file is reported distinctly from a missing symbol."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "worker-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Worker PRD
+
+            | Symbol | Module | Note |
+            | --- | --- | --- |
+            | `some_symbol` | `src/pkg/nonexistent.py` | File is gone |
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors must resolve to a symbol",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "anchored file does not exist: 'src/pkg/nonexistent.py'" in violations[0][1]
+
+
+def test_code_anchor_non_python_occurrence_matching(tmp_path):
+    """Non-Python target files use occurrence matching and report the mode."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    makefile = repo / "Makefile"
+    makefile.write_text("validate:\n\tpytest\n", encoding="utf-8")
+
+    prds = repo / "docs" / "prds"
+    prds.mkdir(parents=True)
+    doc = prds / "build-prd.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Build PRD
+
+            | Symbol | Module | Note |
+            | --- | --- | --- |
+            | `validate` | `Makefile` | Target in Makefile |
+            | `missing_target` | `Makefile` | Not in Makefile |
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "docs/prds",
+                "reason": "Code anchors must resolve",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+def test_code_anchor_single_file_target(tmp_path):
+    """code_anchor_resolves works with a single file target."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "MY_PRD.md"
+    doc.write_text("Line anchor: `foo.py:50`\n", encoding="utf-8")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "MY_PRD.md",
+                "reason": "Code anchors must resolve",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "line anchor forbidden" in violations[0][1]
+
+
+def test_code_anchor_python_syntax_error(tmp_path):
+    """A syntax error in an anchored Python file is reported as a violation."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    py_file = repo / "broken.py"
+    py_file.write_text("def broken_syntax(:\n", encoding="utf-8")
+    doc = repo / "PRD.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            | Symbol | Module | Note |
+            | --- | --- | --- |
+            | `broken_syntax` | `broken.py` | Bad syntax |
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "code_anchor_resolves",
+                "target": "PRD.md",
+                "reason": "Code anchors must resolve",
+            }
+        ],
+    )
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "cannot parse Python file 'broken.py'" in violations[0][1]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

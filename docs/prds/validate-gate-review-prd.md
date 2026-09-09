@@ -134,7 +134,7 @@ markdownlint are cut. `validate-skills.sh` and `skills-lint` do **not** overlap
 (structure vs. CLI-reference validation).
 
 **pytest-xdist dependency mechanism (the thorny one):** this repo has _no_ Python
-dependency manifest and AGENTS.md:102 states "no requirements.txt." vgr-04 must
+dependency manifest and AGENTS.md states "no requirements.txt." vgr-04 must
 therefore (a) choose a dev-dep declaration mechanism and (b) revise that AGENTS.md
 line. Recommended default: a minimal `requirements-dev.txt` (dev-only, doesn't
 reintroduce a _runtime_ manifest) + an AGENTS.md note + `make test` degrading

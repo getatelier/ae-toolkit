@@ -123,38 +123,38 @@ not yet run.
 
 ## Technical Notes
 
-**Intake re-ingestion.** `_add` in `src/aet/cli/sprint.py:97` returns early at
-`:123-130` when a task with the plan's id is already on the board. The
+**Intake re-ingestion.** `_add` in `src/aet/cli/sprint.py` returns early
+when a task with the plan's id is already on the board. The
 re-ingestion path replaces that early return for inert tasks. `new_task_from_plan`
-(`src/aet/plan_parser.py:479`) already derives every field re-ingestion needs —
+(`src/aet/plan_parser.py`) already derives every field re-ingestion needs —
 `spec`, `blocked_by`, `pending_blockers`, `state`, `work_class` — from the plan
 and the live board, so re-ingestion re-runs it and carries forward the identity
-and run fields from the existing record. `backend.fetch()` at `sprint.py:104`
-runs before the board is read, which is why a locally deleted ref returns before
+and run fields from the existing record. The intake step in `src/aet/cli/sprint.py` (`_add`)
+runs `backend.fetch()` before the board is read, which is why a locally deleted ref returns before
 the existing-task check; the outcome wording in R-2 makes that reconciliation
 visible rather than silent.
 
-**Gate defaults.** `stage_enabled` (`src/aet/cli/orchestrator.py:1610`) resolves
+**Gate defaults.** `stage_enabled` (`src/aet/cli/orchestrator.py`) resolves
 a gated stage purely from frontmatter: absent key means run. R-6 adds a second
 default, selected per stage by the workflow definition, deriving from the plan's
 `work_class`. Both defaults remain plan-time data, so ADR-020's rule that routing
 is decided at plan time and enforced as data holds. The registries to extend are
-`ROUTING_GATE_KEYS` and `VERDICT_GATE_KEYS` (`plan_parser.py:545-551`),
-`_STAGE_KEYS` (`src/aet/workflow.py:23`), and `required_evidence`
-(`src/aet/gate.py:59`). `_routing_key_error` (`plan_parser.py:568`) already
+`ROUTING_GATE_KEYS` and `VERDICT_GATE_KEYS` (`src/aet/plan_parser.py`),
+`_STAGE_KEYS` (`src/aet/workflow.py`), and `required_evidence`
+(`src/aet/gate.py`). `_routing_key_error` (`src/aet/plan_parser.py`) already
 enforces that a `skipped` key carries a non-empty reason; a verify key inherits
 that contract by being added to `ROUTING_GATE_KEYS`.
 
-**Ship requirement.** `_run_gate`'s critical-class branch at
-`src/aet/cli/ship.py:523-540` reads `work_class` from the spec and checks
+**Ship requirement.** `_run_gate`'s critical-class branch in
+`src/aet/cli/ship.py` reads `work_class` from the spec and checks
 `.agents/verify/<task>-evidence.md`. R-8 replaces the class branch with a
 workflow lookup; the evidence path stays as the verify stage's output location.
 
 **Divergence at closure.** `plan_size.delivered_size`
-(`src/aet/plan_size.py:49`) already computes `git diff --numstat` over
+(`src/aet/plan_size.py`) already computes `git diff --numstat` over
 `<merge_commit>^1..<merge_commit>` at closure, treats every git failure as a
 recorded failure rather than an exception, and writes onto the settled history
-record through `metrics.backfill_delivered_size` (`src/aet/metrics.py:323`). The
+record through `backfill_delivered_size` (`src/aet/metrics.py`). The
 divergence record uses the same range with `--name-only`, compares against the
 file list in the task's `spec`, and adopts the same fail-soft contract, which is
 what R-11 requires.
@@ -177,7 +177,7 @@ what R-11 requires.
 
 1. **Re-ingestion needs no `id`-mismatch refusal.** Intake validation already
    rejects a plan whose frontmatter `id` differs from its filename stem
-   (`plan_parser.py:633-634`), so the two cannot diverge by editing. A renamed
+   (`validate` in `src/aet/plan_validate.py`), so the two cannot diverge by editing. A renamed
    plan file is a separate case, recorded in Non-Goals.
 2. **The divergence record does not surface in `aet metrics`.** That command
    prints the `metrics.aggregate` projection — first-pass rate, rework, and cost
@@ -261,6 +261,5 @@ _Recorded: 2026-08-28 — Branch: poh-01-re-ingest-an-inert-task-spec_
 
 ---
 
-*Stage: synced*
-*Next step: run `aet-ship`*
-
+_Stage: synced_
+_Next step: run `aet-ship`_

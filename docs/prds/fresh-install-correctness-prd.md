@@ -70,8 +70,8 @@ stated explicitly in ADR-043.
   installer fixes it; release notes say so.
 - Replacing the `git clone` with a downloadable release artifact. Raised
   2026-07-22 and deferred to its own PRD: the wheel ships `src/aet` only
-  (`pyproject.toml:34-36`), and `setup skills` symlinks out of the clone
-  (`setup.py:117`), so the repo is the delivery mechanism for the skills, not an
+  (in `pyproject.toml`), and `setup skills` symlinks out of the clone
+  (in `src/aet/cli/setup.py`), so the repo is the delivery mechanism for the skills, not an
   installer detail. Removing it is a distribution-model decision — where skills
   live, how updates work — and no defect here is caused by cloning. It would
   make ADR-043 strictly stronger (a release-built wheel bakes in the version,
@@ -92,9 +92,9 @@ stated explicitly in ADR-043.
   callback on every subcommand, which is the defect.
 - **R-17** — The direct-script invocation mode is deleted: the
   `#!/usr/bin/env python3` shebang, the `if __name__ == "__main__"` block, and
-  the module-level bootstrap guard (`main.py:35-49`). Supported invocations are
+  the module-level bootstrap guard. Supported invocations are
   the `aet` console script and `python -m aet.cli.main`. No repo caller invokes
-  `main.py` by file path — audited: `Makefile:100-101` uses `-m`,
+  `main.py` by file path — audited: `Makefile` uses `-m`,
   `scripts/skills-lint` imports the app.
 - **R-18** — `aet install` is replaced by `aet setup link`: explicit, reporting,
   and the only code path in the package that writes the link. It keeps existing
@@ -122,8 +122,8 @@ stated explicitly in ADR-043.
   `AGENT` / `AET_SKILLS_DIR` via `envvar=` so the documented env-var contract
   survives the handoff. The `skills_args` array is **removed, not guarded** —
   bash never marshals arguments for a Python program again. This eliminates the
-  empty-array expansion class rather than patching its two instances
-  (`install.sh:193` and `:198`).
+  empty-array expansion class rather than patching its instances
+  in `scripts/install.sh`.
 - **R-22** — Post-bootstrap work is `aet setup`: `skills` (exists), `link`
   (R-18), and `verify` (R-23).
 - **R-23** — `aet setup verify` resolves what `aet` actually runs on `PATH` and
@@ -289,7 +289,7 @@ no-backward-compat convention).
 
 ### Changed from plan
 
-- **R-17 / Task 2:** The `if __name__ == "__main__"` block was kept, not deleted. Deleting it left `python -m aet.cli.main` importable but inert (silent exit 0), which disabled the `make validate` gate at `Makefile:100-101` and broke 9 subprocess tests. The direct-script machinery actually targeted by ADR-041 — the shebang and the module-level bootstrap guard — was removed instead. The module docstring and test coverage (`test_module_invocation_propagates_subcommand_exit_code`, `test_console_script_dispatches`) were updated to reflect this.
+- **R-17 / Task 2:** The `if __name__ == "__main__"` block was kept, not deleted. Deleting it left `python -m aet.cli.main` importable but inert (silent exit 0), which disabled the `make validate` gate in `Makefile` and broke 9 subprocess tests. The direct-script machinery actually targeted by ADR-041 — the shebang and the module-level bootstrap guard — was removed instead. The module docstring and test coverage (`test_module_invocation_propagates_subcommand_exit_code`, `test_console_script_dispatches`) were updated to reflect this.
 
 ### Deferred
 

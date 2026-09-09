@@ -100,9 +100,8 @@ R-id no task can cover. The plans below cite the ADR; none of them authors it.
 - **R-1**: One predicate decides whether a recorded run is live, and it reads
   positive evidence: a recorded returncode settles it; otherwise the PID must be
   held by a process whose own start time is not later than the run's recorded
-  `started`. The three current copies of the bare `os.kill(pid, 0)` check
-  (`queue.py`'s `_pid_alive`, and `_is_process_alive` in `cli/status.py` and `cli/main.py`)
-  are replaced by calls to it.
+  `started`. Historical bare `os.kill(pid, 0)` checks across callers are replaced
+  by `is_run_alive` in `src/aet/liveness.py`.
 - **R-2**: The run lease is reclaimable whenever its owning run is not live under
   R-1, so a crashed run whose PID has been recycled cannot refuse every mutating
   queue command.

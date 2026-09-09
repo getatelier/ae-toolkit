@@ -38,8 +38,8 @@ records). No orchestrator or telemetry-emission changes.
 - Live features in folder-picker fallback mode (no API → no dir listing;
   documented limitation, served mode only).
 - SSE / WebSocket streaming; polling is sufficient at this scale.
-- Prune/retention changes (`prune_archive` already protects fresh-mtime
-  dirs — verified in `aet-work/lib/telemetry.py:430`).
+- Prune/retention changes (`prune_archive` in `src/aet/telemetry.py` already protects fresh-mtime
+  dirs).
 
 ## Requirements
 
@@ -82,13 +82,12 @@ records). No orchestrator or telemetry-emission changes.
 
 ## Technical Notes
 
-- Data model (verified 2026-07-13): `RunLogger` creates the run dir at
-  launch (`aet-work/lib/telemetry.py:137-138`), appends one JSON line per
-  completed record to `{task-id}.jsonl` (`:149`), and writes
-  `last-run.json` only at run completion (`:157`). Torn trailing lines are
+- Data model (verified 2026-07-13): `RunLogger` (`src/aet/telemetry.py`) creates the run dir at
+  launch, appends one JSON line per completed record to `{task-id}.jsonl`, and writes
+  `last-run.json` only at run completion. Torn trailing lines are
   already skipped by both readers.
 - The parser already accepts `summary == null` runs with records
-  (`index.html:191-201`); what is missing is dir visibility, honest status,
+  (`index.html`); what is missing is dir visibility, honest status,
   and freshness signals — this PRD adds exactly those.
 - Dir mtime alone under-reports activity (appends bump file mtimes, not the
   dir's), hence the newest-recursive mtime in R-1 — same definition the

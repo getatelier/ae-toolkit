@@ -57,7 +57,7 @@ verdict gate is untouched).
   **carved out as a separate initiative**, parked at
   `content/backlog/cfg-01-session-efficiency.md`, and is not planned here.
 - **Does not rewire the Makefile's `PYTEST_TARGETS` plumbing.** `make validate` already
-  consumes `change_scope` stdout as `PYTEST_TARGETS` (Makefile:106-108); this initiative
+  consumes `change_scope` stdout as `PYTEST_TARGETS` in `Makefile`; this initiative
   changes what `change_scope` emits, not how the Makefile consumes it.
 - **Does not touch the sibling base-resolver bug** (`_determine_pr_base` returning the
   branch's own name). That stays owned by the `epi-*` resolver epic.
@@ -71,10 +71,10 @@ verdict gate is untouched).
 
 - **R-1**: `src/aet/change_scope.py` maps the changed-file set to a **minimal pytest target
   list** (e.g. `tests/orchestrator/ tests/gate/`) emitted on stdout, replacing the blunt
-  `"tests/"`. `make validate` consumes it unchanged via `PYTEST_TARGETS` (Makefile:17,106).
+  `"tests/"`. `make validate` consumes it unchanged via `PYTEST_TARGETS` in `Makefile`.
 - **R-2**: The installer smoke test (`test-installer`) runs **only when the installer
   surface changed** (`scripts/install.sh`, `src/aet/cli/setup.py`), driven by a signal
-  `change_scope` emits — not the unconditional Makefile line (Makefile:112). The
+  `change_scope` emits — not the unconditional `Makefile` line. The
   "did the installer change?" logic lives in `change_scope` Python, not Makefile shell.
 - **R-3**: The scope decision is a **tier computed from the change set**, never from the
   plan's `*Stage:*` label (a `synced` plan can still carry code — see
@@ -145,7 +145,7 @@ neither written nor queued.
 
 - **change_scope contract (R-1/R-2/R-3).** Today `decide(paths)` returns `FULL`/`DOCS` and
   `main()` prints `"tests/"` or `""`; the Makefile branches on empty-vs-non-empty
-  (Makefile:106-111). The target list and installer signal extend this stdout contract —
+  in `Makefile`. The target list and installer signal extend this stdout contract —
   the mapping should be a small, explicit, conservative table (path prefix → test dir), with
   a documented fallback to the full suite for `conftest.py`, shared fixtures, and any unmapped
   path. **Fail toward more tests, never fewer** — a wrong skip hides a real regression.
@@ -174,8 +174,8 @@ neither written nor queued.
   sleeps and subprocess fixtures. Prefer event/poll waits with a bounded timeout over
   `time.sleep`. This is separable from R-4 but touches the same test files, so it is
   sequenced after the group-split to avoid marker-churn conflicts.
-- **Freshness suppression (R-6).** `_qa_freshness_decision` is already computed and exported as
-  `AET_QA_FRESHNESS` (orchestrator.py:938,1039), but that env var has **no runtime consumer**
+- **Freshness suppression (R-6).** `_qa_freshness_decision` (`src/aet/cli/orchestrator.py`) is already computed and exported as
+  the `AET_QA_FRESHNESS` env var, but that env var has **no runtime consumer**
   (verified 2026-07-24 — read only in tests and run logs), so the injected `_freshness_clause`
   prose is the sole driver of re-run suppression. Making the suppression deterministic must stay
   consistent with **ADR-025** (decision 4: freshness modulates only prompt + env and never
