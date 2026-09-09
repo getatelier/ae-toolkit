@@ -540,6 +540,7 @@ Pre-merge gate, PR creation, and post-merge closure.
 - `gate`: Run the pre-merge validation gate.
 - `merge`: Run the gate, detect conflicts, merge directly into a target branch, and close.
 - `open`: Run the gate and open a PR for the plan.
+- `open-epic`: Run the gate and open a PR for an epic branch.
 - `record-merge`: Hidden alias for close.
 - `split`: Split the PR range into caller-supplied commit groups.
 - `verify`: Verify a branch has merged without mutating state.
@@ -572,6 +573,16 @@ Run the gate and open a PR for the plan.
 
 - `plan` *str* — Task id of the plan to ship (use `aet sprint add` to intake a plan). (required)
 - `--base` *str* — Override the PR base branch/ref (default: resolved trunk or stacked parent).
+- `--dry-run` *boolean* — Show what would be done without making changes. (default: `False`)
+
+## `aet ship open-epic`
+
+Run the gate and open a PR for an epic branch.
+
+### Options
+
+- `branch` *str* — Integration branch to open PR for (default: active epic declaration).
+- `--base` *str* — Override the PR base branch/ref (default: resolved trunk).
 - `--dry-run` *boolean* — Show what would be done without making changes. (default: `False`)
 
 ## `aet ship merge`

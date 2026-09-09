@@ -51,7 +51,9 @@ _MODULES = {
     "aet.cli.release_prep": {"callback": True},
     "aet.cli.report": {"callback": True},
     "aet.cli.retro": {"callback": True},
-    "aet.cli.ship": {"commands": ["default", "gate", "open", "merge", "split", "verify", "close", "record-merge"]},
+    "aet.cli.ship": {
+        "commands": ["default", "gate", "open", "open-epic", "merge", "split", "verify", "close", "record-merge"]
+    },
     "aet.cli.sprint": {"commands": ["add", "intake"]},
     "aet.cli.status": {"callback": True},
     "aet.cli.sync": {"commands": ["sync"]},
@@ -75,9 +77,7 @@ class TestModuleLoadsAndExposesTyperApp(unittest.TestCase):
 
     def test_review_module_no_longer_exists(self):
         """The old review.py binary was folded into ``aet.cli.gate``."""
-        self.assertFalse(
-            (_REPO_ROOT / "src" / "aet" / "cli" / "review.py").exists()
-        )
+        self.assertFalse((_REPO_ROOT / "src" / "aet" / "cli" / "review.py").exists())
 
     def test_all_modules_expose_a_typer_app(self):
         for module_name in _MODULES:
