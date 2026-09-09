@@ -34,6 +34,7 @@ SECTIONS: dict[str, str] = {
     "status": "Run work",
     "state": "Run work",
     "queue": "Run work",
+    "breaker": "Run work",
     # Ship work
     "ship": "Ship work",
     "gate": "Ship work",

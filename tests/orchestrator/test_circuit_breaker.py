@@ -177,6 +177,29 @@ class TestBreakerStore:
         reloaded = store.load()
         assert len(reloaded[SIG_A]) == 3
 
+    def test_store_clear_removes_ref(self, git_repo):
+        """Clearing an existing breaker deletes the ref and returns True."""
+        store = breaker.BreakerStore(str(git_repo))
+        store.save({SIG_A: {"t1", "t2", "t3"}})
+        assert store.load() != {}
+
+        result = store.clear()
+        assert result is True
+        assert store.load() == {}
+        assert store._ref_sha(breaker.BREAKER_REF) is None
+
+    def test_store_clear_when_missing_returns_false(self, git_repo):
+        """Clearing when no breaker ref exists returns False."""
+        store = breaker.BreakerStore(str(git_repo))
+        assert store.clear() is False
+
+    def test_store_reset_alias_for_clear(self, git_repo):
+        """reset() is an alias for clear()."""
+        store = breaker.BreakerStore(str(git_repo))
+        store.save({SIG_A: {"t1", "t2", "t3"}})
+        assert store.reset() is True
+        assert store.load() == {}
+
 
 class TestOrchestratorBreakerWiring:
     """Integration tests for the orchestrator finalize/batch wiring."""

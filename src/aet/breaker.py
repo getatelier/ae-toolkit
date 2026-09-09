@@ -196,3 +196,18 @@ class BreakerStore:
         data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         sha = self._write_blob(data)
         self._git("update-ref", BREAKER_REF, sha).check_returncode()
+
+    def clear(self) -> bool:
+        """Delete ``refs/aet/breaker`` if present.
+
+        Returns ``True`` if the ref existed and was deleted, ``False`` if absent.
+        """
+        if self._ref_sha(BREAKER_REF) is None:
+            return False
+        result = self._git("update-ref", "-d", BREAKER_REF)
+        result.check_returncode()
+        return True
+
+    def reset(self) -> bool:
+        """Alias for :meth:`clear`."""
+        return self.clear()
