@@ -8,6 +8,7 @@ package, so no module-level bootstrap guard is required.
 
 from __future__ import annotations
 
+# ruff: noqa: E402
 import importlib
 import os
 import re
@@ -24,6 +25,11 @@ import click
 import typer
 import typer._click.exceptions as _typer_click_exc
 import typer.core as typer_core
+
+# Ensure local src directory takes precedence over site-packages when run directly.
+_src_dir = str(Path(__file__).resolve().parent.parent.parent)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 # Import subcommand modules. Each module exposes an ``app`` attribute that is a
 # ``typer.Typer()`` instance registered under a top-level name below.
