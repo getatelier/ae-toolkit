@@ -1,3 +1,7 @@
+---
+subject: remove-aet-discover
+---
+
 # Remove aet-discover from AE Toolkit
 
 ## Status

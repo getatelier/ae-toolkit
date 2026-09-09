@@ -1,3 +1,7 @@
+---
+subject: session-log-extraction
+---
+
 # Session-Log Extraction Is a Per-Adapter Extension Point
 
 ## Status

@@ -1,3 +1,7 @@
+---
+subject: documentation-invariants-as-data
+---
+
 # Documentation Invariants Are Data
 
 ## Status

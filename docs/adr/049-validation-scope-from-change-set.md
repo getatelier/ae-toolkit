@@ -1,3 +1,7 @@
+---
+subject: targeted-validation-scope
+---
+
 # Validation Scope Is Derived from the Change Set, in Code
 
 ## Status

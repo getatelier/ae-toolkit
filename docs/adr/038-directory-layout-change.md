@@ -1,3 +1,7 @@
+---
+subject: directory-layout
+---
+
 # Directory Layout Change
 
 ## Status

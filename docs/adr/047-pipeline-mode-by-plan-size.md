@@ -1,3 +1,7 @@
+---
+subject: pipeline-mode-by-plan-size
+---
+
 # Pipeline Mode Selection by Plan Size
 
 ## Status

@@ -1,3 +1,7 @@
+---
+subject: plan-size-measurement
+---
+
 # Plan Size is Measured After Implementation, Not Gated Before It
 
 ## Status

@@ -1,3 +1,7 @@
+---
+subject: remove-skill-artifacts
+---
+
 # Remove `.skill` Artifacts and Packaging Build Step
 
 ## Status

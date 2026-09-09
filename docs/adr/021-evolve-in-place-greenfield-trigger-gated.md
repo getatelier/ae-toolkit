@@ -1,3 +1,7 @@
+---
+subject: evolve-in-place
+---
+
 # Evolve in Place; the Greenfield Is Trigger-Gated
 
 ## Status

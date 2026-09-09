@@ -1,3 +1,7 @@
+---
+subject: work-class-policy
+---
+
 # Work Class Is a Recorded Attribute; Zero-Review Auto-Merge Is Policy-Gated and Off by Default
 
 ## Status

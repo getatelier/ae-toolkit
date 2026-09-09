@@ -1,3 +1,7 @@
+---
+subject: namespace-taxonomy
+---
+
 # Namespace Taxonomy: Deterministic Code vs. Judgment Skills
 
 ## Status

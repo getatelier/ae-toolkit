@@ -1,3 +1,7 @@
+---
+subject: two-layer-config-model
+---
+
 # Two-Layer Config Model: Committed Team File, External Shadow File
 
 ## Status

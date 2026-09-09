@@ -1,3 +1,7 @@
+---
+subject: installer-bootstrap
+---
+
 # The Installer Is a Bootstrap, Not a Program
 
 ## Status

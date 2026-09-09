@@ -1,3 +1,7 @@
+---
+subject: execution-mode
+---
+
 # Execution Mode Interaction Model
 
 ## Status

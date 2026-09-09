@@ -1,3 +1,7 @@
+---
+subject: worktree-project-identity
+---
+
 # Local Worktree Path as Telemetry Project Identity
 
 ## Status

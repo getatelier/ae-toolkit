@@ -1,3 +1,7 @@
+---
+subject: ephemeral-sprint-board
+---
+
 # Work Queue Is an Ephemeral Sprint Board, Plans Are the Source of Truth
 
 ## Status

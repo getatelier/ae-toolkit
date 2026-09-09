@@ -1,3 +1,7 @@
+---
+subject: canonical-verdict-path
+---
+
 # One Canonical Verdict Path per (Task, Kind), Published in Every Session Shape
 
 ## Status

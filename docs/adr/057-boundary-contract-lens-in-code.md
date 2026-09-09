@@ -1,3 +1,7 @@
+---
+subject: boundary-contract-lens
+---
+
 # Boundary-Contract Lens Rides the Review Verdict in Code
 
 ## Status

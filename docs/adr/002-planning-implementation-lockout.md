@@ -1,3 +1,7 @@
+---
+subject: planning-implementation-lockout
+---
+
 # Planning Implementation Lockout
 
 ## Status
