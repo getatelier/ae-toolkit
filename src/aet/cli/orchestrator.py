@@ -72,6 +72,8 @@ from aet.backends.factory import (  # noqa: E402
     resolve_posture,
 )
 from aet.branch_ref import (  # noqa: E402
+    check_task_epic_mismatch,
+    format_epic_mismatch_error,
     resolve_base_ref,
     resolve_integration_branch,
     resolve_integration_branch_for_task,
@@ -3442,7 +3444,23 @@ def run_batch(args: argparse.Namespace, adapter) -> int:
                     # Defensive: stored state is stale and keeps returning the same task.
                     break
 
+                # Preflight check: epic mismatch guard (R-9)
+                has_mismatch, stamped, resolved = check_task_epic_mismatch(
+                    repo_root,
+                    config,
+                    task,
+                    integration_mode,
+                    cli_base=getattr(args, "base", None),
+                    backend=backend,
+                )
+                if has_mismatch:
+                    print(format_epic_mismatch_error(task_id, stamped, resolved))
+                    failures += 1
+                    stop_spawn = True
+                    break
+
                 # Transition the task to in_progress through the sole writer so
+
                 # stored state reflects that it has been picked up.
                 from_state = current_state(task) or "ready"
                 aet_state_bin = str(_SCRIPT_DIR / "aet_state.py")
@@ -3494,6 +3512,17 @@ def run_batch(args: argparse.Namespace, adapter) -> int:
                 # base_commit records where the branch started (ADR-064); without
                 # it the task can never derive merged from branch ancestry.
                 base_commit = resolve_base_commit(repo_root, task_id)
+                task_integration_branch = None
+                if integration_mode == "single-pr":
+                    task_ref = resolve_integration_branch_for_task(
+                        repo_root,
+                        config,
+                        task,
+                        integration_mode,
+                        cli_base=getattr(args, "base", None),
+                        backend=backend,
+                    )
+                    task_integration_branch = task_ref.ref
                 with queue_lock(queue_file):
                     queue = backend.load()["queue"]
                     record_task_meta(
@@ -3502,6 +3531,7 @@ def run_batch(args: argparse.Namespace, adapter) -> int:
                         os.path.relpath(worktree_dir, repo_root),
                         task_id,
                         base_commit=base_commit,
+                        integration_branch=task_integration_branch,
                     )
                     backend.save(queue)
                 backend.push()
@@ -3686,9 +3716,28 @@ def _record_run_one_in_queue(
 
         # Re-read the latest queue under lock and record branch/worktree.
         base_commit = resolve_base_commit(repo_root, branch)
+        config = resolve_config(DEFAULT_CONFIG_PATH, repo_root=repo_root)
+        try:
+            integration_mode = resolve_integration_mode(DEFAULT_CONFIG_PATH, repo_root=repo_root)
+        except Exception:
+            integration_mode = "pr-per-task"
+        task_integration_branch = None
+        if integration_mode == "single-pr":
+            task_ref = resolve_integration_branch_for_task(
+                repo_root, config, task, integration_mode, backend=backend
+            )
+            task_integration_branch = task_ref.ref
+
         with queue_lock(queue_file):
             queue = backend.load()["queue"]
-            record_task_meta(queue, task_id, worktree, branch, base_commit=base_commit)
+            record_task_meta(
+                queue,
+                task_id,
+                worktree,
+                branch,
+                base_commit=base_commit,
+                integration_branch=task_integration_branch,
+            )
             if intake_skipped:
                 recorded = next((t for t in queue if t.get("id") == task_id), None)
                 if recorded is not None:
@@ -3811,6 +3860,11 @@ def run_single(args: argparse.Namespace, adapter) -> int:
         repo_root, config, cli_base=getattr(args, "base", None)
     )
     base_branch = resolve_base_ref(repo_root, integration.ref)
+    try:
+        integration_mode = resolve_integration_mode(DEFAULT_CONFIG_PATH, repo_root=repo_root)
+    except Exception:
+        integration_mode = "pr-per-task"
+
 
     # Check base hygiene before any worktree work — but only for top-level
     # run-one invocations. Batch children rely on the parent-level check.
@@ -3908,7 +3962,34 @@ def run_single(args: argparse.Namespace, adapter) -> int:
 
         if queued_task and not spawned_by_batch:
             queued_task_id = queued_task.get("id", task_id)
+            has_mismatch, stamped, resolved = check_task_epic_mismatch(
+                repo_root,
+                config,
+                queued_task,
+                integration_mode,
+                cli_base=base_branch,
+                backend=backend,
+            )
+            if has_mismatch:
+                print(format_epic_mismatch_error(queued_task_id, stamped, resolved))
+                logger.write_last_run(
+                    telemetry.run_summary_record(
+                        run_id=logger.run_id,
+                        start_time=start_time,
+                        end_time=telemetry.iso_now(),
+                        tasks_spawned=0,
+                        tasks_succeeded=0,
+                        tasks_failed=1,
+                        outcome="failure",
+                        exit_code=1,
+                        task_ids=[queued_task_id],
+                        final_stage=None,
+                    )
+                )
+                return 1
+
             # Ensure the worktree/branch exist before recording them.
+
             try:
                 worktree_dir = create_worktree(
                     repo_root, queued_task_id, base_branch=base_branch

@@ -243,6 +243,25 @@ class TestBaseCommitRecording(unittest.TestCase):
         record_task_meta(queue, "t1", ".worktrees/t1", "t1", base_commit="later-tip")
         self.assertEqual(queue[0]["base_commit"], "original")
 
+    def test_record_task_meta_stamps_integration_branch(self):
+        from aet.queue import record_task_meta
+
+        queue = [{"id": "t1"}]
+        record_task_meta(
+            queue, "t1", ".worktrees/t1", "t1", base_commit="base0000", integration_branch="epic-01"
+        )
+        self.assertEqual(queue[0]["integration_branch"], "epic-01")
+
+    def test_record_task_meta_does_not_overwrite_an_existing_integration_branch(self):
+        """A task re-recorded must keep its original stamped integration branch."""
+        from aet.queue import record_task_meta
+
+        queue = [{"id": "t1", "integration_branch": "original-epic"}]
+        record_task_meta(
+            queue, "t1", ".worktrees/t1", "t1", base_commit="base0000", integration_branch="new-epic"
+        )
+        self.assertEqual(queue[0]["integration_branch"], "original-epic")
+
     def test_recorded_base_makes_a_real_merge_derivable(self):
         """End to end: a task recorded at creation derives merged once merged."""
         from aet.queue import record_task_meta, resolve_base_commit

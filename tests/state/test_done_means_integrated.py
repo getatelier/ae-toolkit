@@ -196,6 +196,45 @@ class TestDoneMeansIntegrated(unittest.TestCase):
 
         self.assertEqual(derived["derived_status"], "merged")
 
+    def test_closure_reads_the_stamp_not_the_declaration(self):
+        """Task 3 (R-8): Deriving closure verifies against stamped integration_branch, not active epic."""
+        plan_path = _plan_file()
+        task = {
+            "id": "t1",
+            "plan_file": plan_path,
+            "branch": "t1",
+            "base_commit": "base0000",
+            "integration_branch": "epic-01",
+        }
+
+        responses = {
+            ("show-ref", "--verify", "--quiet", "refs/heads/t1"): (0, "", ""),
+            ("rev-parse", "t1"): (0, "t1tip00\n", ""),
+            ("rev-parse", "base0000"): (0, "base0000\n", ""),
+            # Merged on stamped epic-01, but NOT on active epic-02 or main
+            ("merge-base", "--is-ancestor", "t1", "origin/epic-01"): (0, "", ""),
+            ("merge-base", "--is-ancestor", "t1", "origin/epic-02"): (1, "", ""),
+            ("merge-base", "--is-ancestor", "t1", "origin/main"): (1, "", ""),
+        }
+
+        with patch.object(
+            aet_state.subprocess, "run", side_effect=_git_mock(responses)
+        ):
+            # Pass active epic 'epic-02', but task is stamped to 'epic-01'
+            derived = aet_state.derive_status(
+                task, trunk_branch="main", integration_branch="epic-02"
+            )
+            ok, msg = aet_state.validate_transition(
+                dict(task, state="awaiting_merge"),
+                "awaiting_merge",
+                "merged",
+                trunk_branch="main",
+                integration_branch="epic-02",
+            )
+
+        self.assertEqual(derived["derived_status"], "merged")
+        self.assertTrue(ok, msg)
+
 
 if __name__ == "__main__":
     unittest.main()

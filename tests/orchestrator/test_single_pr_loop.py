@@ -237,6 +237,118 @@ class TestSinglePrLoop(unittest.TestCase):
             remote_heads = _remote_heads(repo_root)
             self.assertNotIn("task-b", remote_heads)
 
+    def test_epic_mismatch_halts_before_worktree_creation(self):
+        """Task 5 (R-9): Resuming a task stamped to another epic exits non-zero,
+        names both branches and remedies, leaves worktree list and branch list unchanged.
+        """
+
+        with tempfile.TemporaryDirectory() as repo_root, tempfile.TemporaryDirectory() as origin_root:
+            _init_git_repo(repo_root, origin_root)
+
+            Path(repo_root, ".agents").mkdir(parents=True, exist_ok=True)
+            queue_file = os.path.join(repo_root, ".agents", "aet-queue")
+            history_file = os.path.join(repo_root, ".agents", "work-history.jsonl")
+            config_file = os.path.join(repo_root, ".agents", "aet-config.json")
+            Path(config_file).write_text(
+                json.dumps(
+                    {
+                        "trunk_branch": "main",
+                        "integration_branch": "epic-02",
+                        "integration_mode": "single-pr",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            plan_a = _write_plan(repo_root, "task-a")
+            subprocess.run(["git", "-C", repo_root, "add", "."], check=True)
+            subprocess.run(
+                ["git", "-C", repo_root, "commit", "-q", "-m", "add config and plan"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", repo_root, "update-ref", "refs/remotes/origin/main", "HEAD"],
+                check=True,
+            )
+            _create_integration_branch(repo_root, "epic-01")
+            _create_integration_branch(repo_root, "epic-02")
+
+
+            from aet.backends.factory import create_backend
+
+            backend = create_backend(
+                config_path=config_file,
+                queue_file=queue_file,
+                history_file=history_file,
+            )
+            # Stamped to epic-01, but config / envelope points to epic-02
+            task_record = {
+                "id": "task-a",
+                "plan_file": plan_a,
+                "state": "ready",
+                "integration_branch": "epic-01",
+            }
+            backend.save([task_record])
+
+            # Record initial worktree and branch lists
+            initial_worktrees = subprocess.run(
+                ["git", "-C", repo_root, "worktree", "list", "--porcelain"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            initial_branches = subprocess.run(
+                ["git", "-C", repo_root, "branch"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+
+            # Run batch
+            args = orchestrator.argparse.Namespace(
+                queue_file=queue_file,
+                repo_root=repo_root,
+                max_jobs=1,
+                isolation="minimal",
+                task_timeout=3600,
+                heartbeat_interval=60,
+                on_failure="continue",
+                cli_bin=None,
+                base=None,
+            )
+
+            import io
+            from contextlib import redirect_stdout
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                exit_code = orchestrator.run_batch(args, _FAKE_ADAPTER)
+
+            output = out.getvalue()
+            self.assertEqual(exit_code, 1)
+            self.assertIn("Epic mismatch for task 'task-a'", output)
+            self.assertIn("epic-01", output)
+            self.assertIn("epic-02", output)
+            self.assertIn("aet epic set epic-01", output)
+            self.assertIn("aet state reset task-a", output)
+
+            # Assert worktrees and branches are unchanged
+            final_worktrees = subprocess.run(
+                ["git", "-C", repo_root, "worktree", "list", "--porcelain"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            final_branches = subprocess.run(
+                ["git", "-C", repo_root, "branch"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+
+            self.assertEqual(initial_worktrees, final_worktrees)
+            self.assertEqual(initial_branches, final_branches)
+
 
 if __name__ == "__main__":
     unittest.main()

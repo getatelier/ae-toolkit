@@ -103,7 +103,68 @@ class TestSynchronousPreflightCliBinary:
         spawn.assert_not_called()
 
 
+class TestSynchronousPreflightEpicMismatch:
+    """Stamped epic mismatch fails `aet run` and `aet run-one` synchronously before spawning."""
+
+    def test_run_fails_fast_on_stamped_epic_mismatch(self, repo_env: Path) -> None:
+        config_file = repo_env / ".agents" / "aet-config.json"
+        config_file.write_text('{"integration_mode": "single-pr", "integration_branch": "epic-02"}', encoding="utf-8")
+        backend = GitRefsBackend(
+            queue_file=str(repo_env / ".agents" / "aet-queue"),
+            history_file=str(repo_env / ".agents" / "work-history.jsonl"),
+            repo_root=str(repo_env),
+        )
+        task = {
+            "id": "t1",
+            "state": "ready",
+            "integration_branch": "epic-01",
+        }
+        backend.save([task])
+
+        with patch.object(aet, "_spawn_detached") as spawn:
+            result = run_typer(aet.app, ["run"], cwd=str(repo_env))
+
+        assert result.exit_code == 1, result.output
+        assert "Epic mismatch" in result.output
+        assert "epic-01" in result.output
+        assert "epic-02" in result.output
+        spawn.assert_not_called()
+
+    def test_run_one_fails_fast_on_stamped_epic_mismatch(self, repo_env: Path) -> None:
+        config_file = repo_env / ".agents" / "aet-config.json"
+        config_file.write_text('{"integration_mode": "single-pr", "integration_branch": "epic-02"}', encoding="utf-8")
+        plans_dir = repo_env / "docs" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        plan = plans_dir / "test-task.md"
+        plan.write_text(
+            "---\nid: test-task\nsize: S\n---\n\n# Test Task\n\n## Task List\n\n1. Do work\n",
+            encoding="utf-8",
+        )
+        backend = GitRefsBackend(
+            queue_file=str(repo_env / ".agents" / "aet-queue"),
+            history_file=str(repo_env / ".agents" / "work-history.jsonl"),
+            repo_root=str(repo_env),
+        )
+        task = {
+            "id": "test-task",
+            "plan_file": str(plan),
+            "state": "ready",
+            "integration_branch": "epic-01",
+        }
+        backend.save([task])
+
+        with patch.object(aet, "_spawn_detached") as spawn:
+            result = run_typer(aet.app, ["run-one", "test-task"], cwd=str(repo_env))
+
+        assert result.exit_code == 1, result.output
+        assert "Epic mismatch" in result.output
+        assert "epic-01" in result.output
+        assert "epic-02" in result.output
+        spawn.assert_not_called()
+
+
 class TestSynchronousPreflightPlanValidation:
+
     """Missing or invalid plan fails `aet run-one` synchronously before spawning."""
 
     def test_run_one_fails_fast_on_missing_plan(self, repo_env: Path) -> None:

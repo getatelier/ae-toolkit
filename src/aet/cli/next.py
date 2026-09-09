@@ -7,6 +7,7 @@ itself is the authority.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +15,14 @@ from pathlib import Path
 import typer
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-from aet.backends.factory import create_backend  # noqa: E402
+from aet.backends.factory import (  # noqa: E402
+    create_backend,
+    resolve_config,
+    resolve_integration_mode,
+)
+from aet.branch_ref import (  # noqa: E402
+    resolve_integration_branch_for_task,
+)
 from aet.queue import (  # noqa: E402
     QueueIntegrityError,
     current_state,
@@ -95,15 +103,31 @@ def transition_task(backend, task: dict) -> bool:
     queue = data["queue"]
     branch = task_id
     worktree = f".worktrees/{task_id}"
+    repo_root = getattr(backend, "repo_root", None) or "."
+    config_path = os.path.join(repo_root, ".agents", "aet-config.json")
+    config = resolve_config(config_path, repo_root=repo_root)
+    try:
+        integration_mode = resolve_integration_mode(config_path, repo_root=repo_root)
+    except Exception:
+        integration_mode = "pr-per-task"
+    task_integration_branch = None
+    if integration_mode == "single-pr":
+        task_ref = resolve_integration_branch_for_task(
+            repo_root, config, task, integration_mode, backend=backend
+        )
+        task_integration_branch = task_ref.ref
+
     record_task_meta(
         queue,
         task_id,
         worktree,
         branch,
         base_commit=resolve_base_commit(".", branch),
+        integration_branch=task_integration_branch,
     )
     backend.save(queue)
     return True
+
 
 
 def _run(

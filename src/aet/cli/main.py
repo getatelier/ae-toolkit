@@ -74,6 +74,12 @@ from aet.backends.factory import (
     LegacyTaskBackendError,
     QueueOutsideRepositoryError,
     create_backend,
+    resolve_config,
+    resolve_integration_mode,
+)
+from aet.branch_ref import (
+    check_task_epic_mismatch,
+    format_epic_mismatch_error,
 )
 from aet.cli_adapter import resolve_cli_adapter
 from aet.ledger import LedgerCorruptionError
@@ -591,7 +597,27 @@ def _validate_preflight(
                 history_file=history_file,
             )
             backend.fetch()
-            backend.load()
+            data = backend.load()
+            queue = data.get("queue", [])
+            config = resolve_config(config_path, repo_root=repo_root)
+            try:
+                integration_mode = resolve_integration_mode(config_path, repo_root=repo_root)
+            except Exception:
+                integration_mode = "pr-per-task"
+            if integration_mode == "single-pr":
+                for task in queue:
+                    if task.get("state") in ("ready", "in_progress", "planned", "awaiting_merge"):
+                        has_mismatch, stamped, resolved = check_task_epic_mismatch(
+                            repo_root, config, task, integration_mode, backend=backend
+                        )
+                        if has_mismatch:
+                            typer.echo(
+                                format_epic_mismatch_error(task.get("id", ""), stamped, resolved),
+                                err=True,
+                            )
+                            raise typer.Exit(1)
+        except typer.Exit:
+            raise
         except (
             QueueIntegrityError,
             LegacyTaskBackendError,
@@ -622,6 +648,44 @@ def _validate_preflight(
                 err=True,
             )
             raise typer.Exit(1)
+
+        # 5. Stamped epic mismatch check (run-one)
+        try:
+            history_file = str(Path(queue_file).with_name("work-history.jsonl"))
+            config_path = str(Path(queue_file).with_name("aet-config.json"))
+            backend = create_backend(
+                config_path=config_path,
+                queue_file=queue_file,
+                history_file=history_file,
+            )
+            config = resolve_config(config_path, repo_root=repo_root)
+            try:
+                integration_mode = resolve_integration_mode(config_path, repo_root=repo_root)
+            except Exception:
+                integration_mode = "pr-per-task"
+            if integration_mode == "single-pr":
+                data = backend.load()
+                queue = data.get("queue", [])
+                task_id = spec.get("frontmatter", {}).get("id") or plan_path.stem
+                task = next(
+                    (t for t in queue if t.get("id") == task_id or t.get("plan_file") == str(plan_path)),
+                    None,
+                )
+                if task:
+                    has_mismatch, stamped, resolved = check_task_epic_mismatch(
+                        repo_root, config, task, integration_mode, backend=backend
+                    )
+                    if has_mismatch:
+                        typer.echo(
+                            format_epic_mismatch_error(task.get("id", task_id), stamped, resolved),
+                            err=True,
+                        )
+                        raise typer.Exit(1)
+        except typer.Exit:
+            raise
+        except Exception:
+            pass
+
 
 
 def _spawn_detached(argv: list[str], run_id: str) -> int:

@@ -6,6 +6,7 @@ Systemic breaker: the same signature across 3 distinct tasks => stop shift.
 
 import importlib.machinery
 import importlib.util
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -349,6 +350,79 @@ class TestOrchestratorBreakerWiring:
         queue = backend.load()["queue"]
         victim = next(t for t in queue if t["id"] == "victim")
         assert victim["state"] == "ready"
+
+    def test_epic_mismatch_does_not_count_as_failure(self, tmp_path):
+        """Task 5 (R-9): Epic mismatch halt leaves per-task and systemic breaker tallies unchanged."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test User"],
+            check=True,
+        )
+        (repo / "README.md").write_text("# test", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "-q", "-m", "initial"],
+            check=True,
+        )
+        subprocess.run(["git", "-C", str(repo), "branch", "-M", "main"], check=True)
+
+        config_file = repo / ".agents" / "aet-config.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(
+            json.dumps(
+                {
+                    "trunk_branch": "main",
+                    "integration_branch": "epic-02",
+                    "integration_mode": "single-pr",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        queue_file = str(repo / ".agents" / "aet-queue")
+        backend = orchestrator._make_backend(queue_file)
+        task = {
+            "id": "t1",
+            "state": "ready",
+            "integration_branch": "epic-01",
+        }
+        backend.save([task])
+
+        store = breaker.BreakerStore(str(repo))
+        assert store.load() == {}
+
+        args = orchestrator.argparse.Namespace(
+            queue_file=queue_file,
+            repo_root=str(repo),
+            max_jobs=1,
+            isolation="minimal",
+            task_timeout=3600,
+            heartbeat_interval=60,
+            on_failure="continue",
+            cli_bin=None,
+            base=None,
+        )
+
+        class FakeAdapter:
+            name = "fake"
+            bin = "fake"
+
+        exit_code = orchestrator.run_batch(args, FakeAdapter())
+        assert exit_code == 1
+
+        # Check breaker store tally is still empty (no failure recorded)
+        assert store.load() == {}
+
+        # Check task record has no failure signatures
+        queue = backend.load()["queue"]
+        t1 = next(t for t in queue if t["id"] == "t1")
+        assert "failure_signatures" not in t1 or not t1["failure_signatures"]
 
 
 if __name__ == "__main__":

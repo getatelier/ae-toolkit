@@ -432,9 +432,15 @@ def derive_status(task, blocker_status_fn=None, cwd=None, trunk_branch="main", i
     branch = task.get("branch")
     worktree = task.get("worktree")
     merge_commit = task.get("merge_commit")
-    target_branch = integration_branch or trunk_branch
+    target_branch = (
+        task.get("integration_branch")
+        or (task.get("stamp", {}).get("branch") if isinstance(task.get("stamp"), dict) else None)
+        or integration_branch
+        or trunk_branch
+    )
 
     derived = {"derived_status": "unknown"}
+
 
     # Plan file exists?  A record carrying a portable spec (R-19) counts as
     # having its plan: the spec renders the working file on demand, so the
@@ -543,7 +549,13 @@ def validate_transition(task, from_stage, to_stage, cwd=None, trunk_branch="main
     current_state = queue_lib.current_state(task)
     branch = task.get("branch")
     merge_commit = task.get("merge_commit")
-    target_branch = integration_branch or trunk_branch
+    target_branch = (
+        task.get("integration_branch")
+        or (task.get("stamp", {}).get("branch") if isinstance(task.get("stamp"), dict) else None)
+        or integration_branch
+        or trunk_branch
+    )
+
 
     # Basic: from_stage should match current state
     if from_stage != current_state:
@@ -848,11 +860,17 @@ def _derive_all_states(
         Falls back to the static branch when the caller supplied no repository
         context, which is what keeps the many direct callers unchanged.
         """
+        stamped = task.get("integration_branch") or (
+            task.get("stamp", {}).get("branch") if isinstance(task.get("stamp"), dict) else None
+        )
+        if stamped:
+            return stamped
         if repo_root is not None and config is not None and integration_mode is not None:
             return resolve_integration_branch_for_task(
                 repo_root, config, task, integration_mode
             ).ref
         return integration_branch
+
 
     def blocker_status(task_id):
         if task_id in task_by_id:
