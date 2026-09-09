@@ -57,6 +57,23 @@ while naming neither the module nor anything that imports it. Entries need a
 reason; `tests/test_change_scope.py` fails when one names a file that moved, and
 when a source file no test reaches is not on the acknowledged list.
 
+### Documentation Lint Escape Markers
+
+When prose must deliberately mention retired paths, historical commands, or code
+patterns that violate documentation governance rules (such as migration guides
+or historical citations in PRDs/ADRs), wrap the exempt span in escape markers:
+
+```markdown
+<!-- aet-lint: off -->
+Deliberately unmigrated reference or historical command.
+<!-- aet-lint: on -->
+```
+
+Both `scripts/skills-lint` and `aet docs lint` (`src/aet/docs_lint.py`) honour
+these markers and strip escaped spans before rule evaluation. An unclosed `off`
+marker (`<!-- aet-lint: off -->` with no subsequent `<!-- aet-lint: on -->`)
+treats the exemption as running through to the end of the document.
+
 ## Package-Deliverable Rules
 
 AE Toolkit is installed together, not à la carte. Skills may reference shared conventions, cross-skill rules, and toolkit-level docs because the whole system is present at runtime.

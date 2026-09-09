@@ -646,5 +646,224 @@ def test_false_positives_allowed(tmp_path):
     assert docs_lint.lint_docs(rules, repo) == []
 
 
+def test_strip_lint_escapes_no_markers_byte_identical():
+    """A document with no markers is byte-identical after stripping."""
+    text = "# Title\n\nSome clean prose without any markers.\n"
+    assert docs_lint.strip_lint_escapes(text) == text
+    assert docs_lint.strip_lint_escapes(text) is text
+
+
+def test_strip_lint_escapes_closed_span():
+    """Spans between <!-- aet-lint: off --> and <!-- aet-lint: on --> are removed."""
+    text = (
+        "# Heading\n"
+        "Keep line 1\n"
+        "<!-- aet-lint: off -->\n"
+        "Remove line 2\n"
+        "<!-- aet-lint: on -->\n"
+        "Keep line 3\n"
+    )
+    expected = "# Heading\nKeep line 1\n\nKeep line 3\n"
+    assert docs_lint.strip_lint_escapes(text) == expected
+
+
+def test_strip_lint_escapes_unclosed_off_runs_to_eof():
+    """An unclosed <!-- aet-lint: off --> removes everything to end of file."""
+    text = (
+        "# Heading\n"
+        "Keep line 1\n"
+        "<!-- aet-lint: off -->\n"
+        "Remove line 2\n"
+        "Remove line 3 to EOF"
+    )
+    expected = "# Heading\nKeep line 1\n"
+    assert docs_lint.strip_lint_escapes(text) == expected
+
+
+def test_escape_marker_exempts_must_not_contain_violation(tmp_path):
+    """A violation inside an escaped span passes linting."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Toolkit
+
+            <!-- aet-lint: off -->
+            This refers to retired path .agents/work-queue.json deliberately.
+            <!-- aet-lint: on -->
+
+            Clean content.
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "must_not_contain",
+                "target": "README.md",
+                "value": ".agents/work-queue.json",
+                "reason": "Must not reference retired queue file",
+            }
+        ],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_violation_outside_escape_marker_fails(tmp_path):
+    """The same violation outside an escaped span fails."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Toolkit
+
+            <!-- aet-lint: off -->
+            Exempt reference: .agents/work-queue.json
+            <!-- aet-lint: on -->
+
+            Unescaped violation: .agents/work-queue.json
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "must_not_contain",
+                "target": "README.md",
+                "value": ".agents/work-queue.json",
+                "reason": "Must not reference retired queue file",
+            }
+        ],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "Must not reference retired queue file" in violations[0][1]
+
+
+def test_escape_marker_unclosed_off_exempts_remainder(tmp_path):
+    """An unclosed off marker exempts the remainder of the document."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Toolkit
+
+            Clean top section.
+
+            <!-- aet-lint: off -->
+            Historical discussion follows:
+            .agents/work-queue.json
+            another forbidden string: TODO
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "must_not_contain",
+                "target": "README.md",
+                "value": [".agents/work-queue.json", "TODO"],
+                "reason": "Forbidden strings",
+            }
+        ],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_section_scoped_escape_marker_exempts_violation(tmp_path):
+    """An escaped span within a named section is ignored by section-scoped rules."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Toolkit
+
+            ## Context
+
+            Clean context.
+            <!-- aet-lint: off -->
+            Old detail: FORBIDDEN
+            <!-- aet-lint: on -->
+            Still in context.
+
+            ## Other
+
+            Other section.
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "must_not_contain",
+                "target": "README.md",
+                "section": "Context",
+                "value": "FORBIDDEN",
+                "reason": "Context must not contain FORBIDDEN",
+            }
+        ],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_must_contain_inside_escaped_span_fails(tmp_path):
+    """Required text only present inside an escaped span is treated as absent."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    doc = repo / "README.md"
+    doc.write_text(
+        textwrap.dedent(
+            """\
+            # Toolkit
+
+            <!-- aet-lint: off -->
+            RequiredKeyword is inside escape
+            <!-- aet-lint: on -->
+            """
+        ),
+        encoding="utf-8",
+    )
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [
+            {
+                "type": "must_contain",
+                "target": "README.md",
+                "value": "RequiredKeyword",
+                "reason": "README must contain RequiredKeyword",
+            }
+        ],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "README must contain RequiredKeyword" in violations[0][1]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
