@@ -269,6 +269,50 @@ class TestPrPerTaskGitSequenceUnchanged(unittest.TestCase):
             self.assertEqual(ref_with_epic.ref, "main")
             self.assertEqual(ref_with_epic.provenance, "trunk")
 
+    def test_no_stamp_outside_single_pr(self):
+        """Task 2 (R-7): pr-per-task mode leaves integration_branch unset on the record."""
+        from aet.backends.factory import create_backend
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = os.path.join(temp_dir, "repo")
+            os.makedirs(repo_root)
+            _init_git_repo(repo_root)
+
+            os.makedirs(os.path.join(repo_root, ".agents"), exist_ok=True)
+            queue_file = os.path.join(repo_root, ".agents", "aet-queue")
+            history_file = os.path.join(repo_root, ".agents", "work-history.jsonl")
+            backend = create_backend(queue_file=queue_file, history_file=history_file)
+
+            # Write config with pr-per-task mode
+            config_path = os.path.join(repo_root, ".agents", "aet-config.json")
+            Path(config_path).write_text(
+                json.dumps({"trunk_branch": "main", "integration_mode": "pr-per-task"}),
+                encoding="utf-8",
+            )
+
+
+            task = {
+                "id": "t1",
+                "state": "planned",
+                "plan_file": os.path.join(repo_root, "docs", "plans", "t1.md"),
+            }
+            backend.save([task])
+
+            worktree_dir = os.path.join(repo_root, ".worktrees", "t1")
+            os.makedirs(worktree_dir, exist_ok=True)
+
+            orchestrator._record_run_one_in_queue(
+                backend=backend,
+                queue_file=queue_file,
+                task_id="t1",
+                worktree=".worktrees/t1",
+                branch="t1",
+                repo_root=repo_root,
+            )
+
+            loaded = backend.load()["queue"][0]
+            self.assertIsNone(loaded.get("integration_branch"))
+
 
 if __name__ == "__main__":
     unittest.main()
