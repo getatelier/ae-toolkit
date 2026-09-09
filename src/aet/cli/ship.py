@@ -5,6 +5,7 @@ Usage:
   aet ship <task_id>                  Run the gate, then open a PR.
   aet ship gate <task_id>             Run the pre-merge gate (steps 1-9).
   aet ship open <task_id>             Run the gate and open a PR.
+  aet ship open-epic [<branch>]       Run the gate and open a PR for an epic branch.
   aet ship merge <task_id> [--branch <target>]
                                       Run the gate, detect conflicts against the target branch,
                                       merge directly into it, and record closure. Target defaults to
@@ -27,6 +28,7 @@ from __future__ import annotations
 import argparse
 import importlib.machinery
 import importlib.util
+import json
 import os
 import re
 import shlex
@@ -178,9 +180,7 @@ def _normalize_verify_args(
 
     if _is_plan_path(task_id):
         resolved_plan = task_id
-        resolved_task_id = plan_parser.parse_frontmatter(Path(resolved_plan)).get(
-            "id"
-        ) or Path(resolved_plan).stem
+        resolved_task_id = plan_parser.parse_frontmatter(Path(resolved_plan)).get("id") or Path(resolved_plan).stem
         resolved_queue = plan if plan else queue
         return resolved_task_id, resolved_plan, resolved_queue
 
@@ -206,19 +206,14 @@ def _resolve_ship_task(args: argparse.Namespace) -> int | None:
     queue = getattr(args, "queue", ".agents/aet-queue")
     task, sealed = aet_state.resolve_task_record(plan_arg, queue)
     if sealed:
-        print(
-            f"Recorded merge for {plan_arg}: "
-            f"{sealed.get('merge_commit')} ({sealed.get('merge_strategy')})"
-        )
+        print(f"Recorded merge for {plan_arg}: {sealed.get('merge_commit')} ({sealed.get('merge_strategy')})")
         return 0
     if task is None:
         return _fail(f"Task not found: {plan_arg}")
 
     spec = task.get("spec")
     if not isinstance(spec, dict):
-        return _fail(
-            f"Task {plan_arg} has no spec. Run `aet sprint add` to intake the plan."
-        )
+        return _fail(f"Task {plan_arg} has no spec. Run `aet sprint add` to intake the plan.")
 
     args.task_id = task.get("id", plan_arg)
     args.spec = spec
@@ -541,7 +536,7 @@ def _create_gate_worktree(branch: str) -> Path:
 
 def _run_gate(args: argparse.Namespace) -> GateResult:
     """Execute gate checks and return a structured result for reuse."""
-    spec = args.spec
+    spec = getattr(args, "spec", None) or {}
     task_id = getattr(args, "task_id", getattr(args, "plan", None))
     feature_branch = _resolve_feature_branch(task_id) if task_id else None
 
@@ -614,9 +609,7 @@ def _run_gate(args: argparse.Namespace) -> GateResult:
             )
 
         test_cmd = os.environ.get("AET_SHIP_TEST_CMD", "make validate")
-        test_result = subprocess.run(
-            shlex.split(test_cmd), cwd=str(workspace), capture_output=True, text=True
-        )
+        test_result = subprocess.run(shlex.split(test_cmd), cwd=str(workspace), capture_output=True, text=True)
         if test_result.returncode != 0:
             return GateResult(
                 ok=False,
@@ -630,9 +623,7 @@ def _run_gate(args: argparse.Namespace) -> GateResult:
 
         coverage_cmd = os.environ.get("AET_SHIP_COVERAGE_CMD")
         if coverage_cmd:
-            subprocess.run(
-                shlex.split(coverage_cmd), cwd=str(workspace), capture_output=True, text=True
-            )
+            subprocess.run(shlex.split(coverage_cmd), cwd=str(workspace), capture_output=True, text=True)
 
         repo_root = _run_git("rev-parse", "--show-toplevel").stdout.strip()
         plan_fm = spec.get("frontmatter", {}) if isinstance(spec, dict) else {}
@@ -648,9 +639,7 @@ def _run_gate(args: argparse.Namespace) -> GateResult:
         # reach `awaiting_merge` without having walked the stage that produces it,
         # and this is the last gate before trunk.
         req_evidence = gate.required_evidence(repo_root, plan_fm)
-        verify_stages = [
-            stage_name for stage_name, evidence_kind in req_evidence if evidence_kind == "verify"
-        ]
+        verify_stages = [stage_name for stage_name, evidence_kind in req_evidence if evidence_kind == "verify"]
         if verify_stages:
             passed, detail = gate.verdict_status(args.task_id, "verify", repo_root)
             if not passed:
@@ -1028,6 +1017,137 @@ def cmd_open(args: argparse.Namespace) -> int:
             )
 
     print("✅ aet ship open complete.")
+    return 0
+
+
+def _find_existing_pr(branch: str) -> Optional[str]:
+    """Look up an existing PR for the branch using ``gh pr list --head <branch>``."""
+    try:
+        res = subprocess.run(
+            ["gh", "pr", "list", "--head", branch, "--json", "url"],
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            out = res.stdout.strip()
+            try:
+                data = json.loads(out)
+                if isinstance(data, list) and len(data) > 0:
+                    if isinstance(data[0], dict) and "url" in data[0]:
+                        return data[0]["url"]
+                    if isinstance(data[0], str) and data[0].startswith("http"):
+                        return data[0]
+            except json.JSONDecodeError:
+                pass
+            for line in out.splitlines():
+                line = line.strip()
+                if line.startswith("http://") or line.startswith("https://"):
+                    return line
+    except Exception:
+        pass
+    return None
+
+
+def cmd_open_epic(args: argparse.Namespace) -> int:
+    """Run the gate and open a PR for an epic branch."""
+    queue = getattr(args, "queue", ".agents/aet-queue")
+    branch_arg = getattr(args, "branch", None)
+
+    epic = None
+    try:
+        backend = aet_state.make_backend(queue)
+        backend.fetch()
+        epic = backend.read_epic()
+    except Exception:
+        pass
+
+    branch = branch_arg or (epic.get("branch") if epic else None)
+    if not branch:
+        return _fail(
+            "No active epic declaration found and no branch specified. "
+            "Use `aet epic set <branch>` to declare one, or pass a branch name."
+        )
+
+    print(f"Running aet ship open-epic for {branch}")
+
+    gate_args = argparse.Namespace(
+        plan=branch,
+        task_id=branch,
+        base=getattr(args, "base", None),
+        dry_run=args.dry_run,
+        spec={},
+        queue=queue,
+    )
+    result = _run_gate(gate_args)
+    if not result.ok:
+        return _fail(f"Gate failed: {result.message}")
+    print(f"   {result.message}")
+
+    guard_error = _check_release_guard(result.pr_base, feature_branch=branch)
+    if guard_error:
+        return _fail(guard_error)
+
+    print("Pushing branch...")
+    ok, output = _push_branch(result.rebased, args.dry_run, feature_branch=branch)
+    if not ok:
+        return _fail(f"Push failed:\n{output}")
+    if output.strip():
+        print(f"   {output.strip()}")
+
+    existing_pr = _find_existing_pr(branch)
+    if existing_pr:
+        print(existing_pr)
+        return 0
+
+    declared_title = None
+    declared_body_file = None
+    if epic and epic.get("branch") == branch:
+        declared_title = epic.get("title")
+        declared_body_file = epic.get("body_file")
+
+    title = declared_title if declared_title else branch
+
+    if declared_body_file:
+        repo_root = _run_git("rev-parse", "--show-toplevel").stdout.strip()
+        bf_path = Path(declared_body_file)
+        if not bf_path.is_absolute():
+            bf_path = Path(repo_root) / bf_path
+        if bf_path.is_file():
+            body = bf_path.read_text(encoding="utf-8")
+        else:
+            body = f"## {title}\n"
+    else:
+        subjects = _commit_subjects(result.pr_base, feature_branch=branch)
+        spec = {"frontmatter": {"id": branch}, "title": title}
+        body = _generate_changelog_entry(subjects, spec)
+
+    print("Creating PR...")
+    ok, output = _create_pr(result.pr_base, title, body, args.dry_run)
+    if not ok:
+        return _fail(f"PR creation failed:\n{output}")
+    if output.strip():
+        print(f"   {output.strip()}")
+
+    pr_url = output.strip().splitlines()[0].strip() if output.strip() else ""
+
+    if pr_url and not args.dry_run:
+        try:
+            Ledger(resolve_ledger_path()).write_event(
+                source="aet-ship",
+                task=branch,
+                kind="cut",
+                ref=pr_url,
+                ref_kind="pr",
+                payload={
+                    "pr_base": result.pr_base,
+                    "branch": branch,
+                    "epic": True,
+                },
+            )
+        except Exception:
+            pass
+
+    print("✅ aet ship open-epic complete.")
     return 0
 
 
@@ -1464,6 +1584,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show what would be done without making changes.",
     )
 
+    open_epic_parser = sub.add_parser(
+        "open-epic",
+        help="Run the pre-merge gate and open a PR for an epic branch.",
+    )
+    open_epic_parser.add_argument(
+        "branch",
+        nargs="?",
+        default=None,
+        help="Integration branch to open PR for (default: active epic declaration).",
+    )
+    open_epic_parser.add_argument(
+        "--base",
+        help="Override the PR base branch/ref (default: resolved trunk).",
+    )
+    open_epic_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without making changes.",
+    )
+
     merge_parser = sub.add_parser(
         "merge",
         help="Run the gate, detect conflicts, merge directly into a target branch, and close.",
@@ -1582,7 +1722,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-_KNOWN_SUBCOMMANDS = {"gate", "open", "merge", "split", "verify", "close", "record-merge"}
+_KNOWN_SUBCOMMANDS = {"gate", "open", "open-epic", "merge", "split", "verify", "close", "record-merge"}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1608,6 +1748,8 @@ def main(argv: list[str] | None = None):
         return cmd_gate(args)
     if args.command == "open":
         return cmd_open(args)
+    if args.command == "open-epic":
+        return cmd_open_epic(args)
     if args.command == "merge":
         return cmd_merge(args)
     if args.command == "split":
@@ -1710,6 +1852,28 @@ def ship_open(
 ) -> None:
     """Run the gate and open a PR for the plan."""
     rc = cmd_open(argparse.Namespace(plan=plan, base=base, dry_run=dry_run))
+    raise typer.Exit(rc)
+
+
+@app.command(name="open-epic")
+def ship_open_epic(
+    branch: Optional[str] = typer.Argument(
+        None,
+        help="Integration branch to open PR for (default: active epic declaration).",
+    ),
+    base: Optional[str] = typer.Option(
+        None,
+        "--base",
+        help="Override the PR base branch/ref (default: resolved trunk).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be done without making changes.",
+    ),
+) -> None:
+    """Run the gate and open a PR for an epic branch."""
+    rc = cmd_open_epic(argparse.Namespace(branch=branch, base=base, dry_run=dry_run))
     raise typer.Exit(rc)
 
 
@@ -1890,9 +2054,7 @@ def ship_close(
 ) -> None:
     """Record post-merge closure for a task."""
     try:
-        resolved_task_id, resolved_plan, resolved_queue = _normalize_close_args(
-            task_id, plan, queue
-        )
+        resolved_task_id, resolved_plan, resolved_queue = _normalize_close_args(task_id, plan, queue)
     except ValueError as exc:
         raise typer.Exit(_fail(str(exc)))
     raise typer.Exit(
@@ -1952,9 +2114,7 @@ def ship_record_merge(
 ) -> None:
     """Hidden alias for close."""
     try:
-        resolved_task_id, resolved_plan, resolved_queue = _normalize_close_args(
-            task_id, plan, queue
-        )
+        resolved_task_id, resolved_plan, resolved_queue = _normalize_close_args(task_id, plan, queue)
     except ValueError as exc:
         raise typer.Exit(_fail(str(exc)))
     raise typer.Exit(
