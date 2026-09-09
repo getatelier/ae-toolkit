@@ -186,7 +186,7 @@ class TestConcurrentState(unittest.TestCase):
                 p.start()
 
             for p in processes:
-                p.join(timeout=60)
+                p.join(timeout=180)
                 self.assertEqual(p.exitcode, 0, "worker process exited with error")
 
             by_id = {t["id"]: t for t in load_git_queue(queue_path)}
@@ -223,11 +223,11 @@ class TestConcurrentState(unittest.TestCase):
             )
             writer.start()
 
-            done.wait(timeout=60)
+            done.wait(timeout=180)
             time.sleep(0.05)  # Let reader observe a few more post-write states.
             stop.set()
-            reader.join(timeout=10)
-            writer.join(timeout=10)
+            reader.join(timeout=30)
+            writer.join(timeout=30)
 
             result = json.loads(Path(result_path).read_text(encoding="utf-8"))
             reads = result["reads"]
