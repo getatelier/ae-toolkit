@@ -7,8 +7,12 @@ import unittest
 from pathlib import Path
 
 from aet.context_digest import (
+    AdrCorpusReport,
+    AdrEntry,
     TopNRecentSelector,
+    audit_adr_entries,
     build_rules_digest,
+    read_adr_entries,
     read_learnings,
     render_digest_section,
 )
@@ -20,13 +24,16 @@ def _write_adr(
     *,
     subject: str | None = None,
     supersedes: list[int] | None = None,
+    relates: list[int] | None = None,
 ) -> Path:
-    """Write a minimal ADR file with optional subject/supersedes frontmatter."""
+    """Write a minimal ADR file with optional subject/supersedes/relates frontmatter."""
     lines = ["---"]
     if subject is not None:
         lines.append(f"subject: {subject}")
     if supersedes:
         lines.append(f"supersedes: [{', '.join(str(n) for n in supersedes)}]")
+    if relates:
+        lines.append(f"relates: [{', '.join(str(n) for n in relates)}]")
     lines.append("---")
     lines.append("")
     lines.append(f"# {name}")
@@ -148,6 +155,73 @@ class TestBuildRulesDigest(unittest.TestCase):
         """A missing ADR directory degrades to an empty digest, never an error."""
         rules = build_rules_digest(Path("/nonexistent/docs/adr"))
         self.assertEqual(rules, [])
+
+
+class TestAuditAdrEntries(unittest.TestCase):
+    """Unit tests for the ADR corpus integrity audit helper."""
+
+    def test_duplicate_numbers_detected(self):
+        """Entries sharing an ADR number are reported in duplicate_numbers."""
+        entries = [
+            AdrEntry(stem="072-a", number=72, subject="first", supersedes=[]),
+            AdrEntry(stem="072-b", number=72, subject="second", supersedes=[]),
+            AdrEntry(stem="073-c", number=73, subject="third", supersedes=[]),
+        ]
+        report = audit_adr_entries(entries)
+        self.assertIn(72, report.duplicate_numbers)
+        self.assertEqual(len(report.duplicate_numbers[72]), 2)
+        self.assertNotIn(73, report.duplicate_numbers)
+
+    def test_dangling_supersedes_detected(self):
+        """A supersedes reference to a non-existent number is flagged as dangling."""
+        entries = [
+            AdrEntry(stem="010-a", number=10, subject="alpha", supersedes=[99]),
+        ]
+        report = audit_adr_entries(entries)
+        self.assertEqual(report.dangling_supersedes, {"010-a": [99]})
+
+    def test_dangling_relates_detected(self):
+        """A relates reference to a non-existent number is flagged as dangling."""
+        entries = [
+            AdrEntry(stem="010-a", number=10, subject="alpha", supersedes=[], relates=[99]),
+        ]
+        report = audit_adr_entries(entries)
+        self.assertEqual(report.dangling_relates, {"010-a": [99]})
+
+    def test_relates_to_superseded_record_detected(self):
+        """A relates reference to a superseded number is flagged as superseded_relates."""
+        entries = [
+            AdrEntry(stem="010-old", number=10, subject="state", supersedes=[]),
+            AdrEntry(stem="011-new", number=11, subject="state", supersedes=[10]),
+            AdrEntry(stem="012-user", number=12, subject="other", supersedes=[], relates=[10]),
+        ]
+        report = audit_adr_entries(entries)
+        self.assertEqual(report.dangling_relates, {})
+        self.assertEqual(report.superseded_relates, {"012-user": [10]})
+
+    def test_clean_corpus_passes_audit(self):
+        """A clean corpus has no duplicates, dangling refs, or superseded relations."""
+        entries = [
+            AdrEntry(stem="010-old", number=10, subject="state", supersedes=[]),
+            AdrEntry(stem="011-new", number=11, subject="state", supersedes=[10]),
+            AdrEntry(stem="012-user", number=12, subject="other", supersedes=[], relates=[11]),
+        ]
+        report = audit_adr_entries(entries)
+        self.assertIsInstance(report, AdrCorpusReport)
+        self.assertEqual(report.duplicate_numbers, {})
+        self.assertEqual(report.dangling_supersedes, {})
+        self.assertEqual(report.dangling_relates, {})
+        self.assertEqual(report.superseded_relates, {})
+
+    def test_read_adr_entries_populates_relates(self):
+        """read_adr_entries parses and coerces the relates frontmatter key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            adr_dir = _make_adr_dir(Path(tmp))
+            _write_adr(adr_dir, "010-rel.md", subject="test", relates=[5, 6])
+
+            entries = read_adr_entries(adr_dir)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0].relates, [5, 6])
 
 
 class TestRenderDigestSection(unittest.TestCase):

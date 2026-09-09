@@ -240,3 +240,26 @@ files and sections. R-4 cannot copy the implementation, only the marker's spelli
   once R-1 refuses that state outright? Leaving it is harmless but leaves a
   misleading comment in the tree; removing it changes a rule this work does not own.
   The plan should decide explicitly rather than leave both behaviours standing.
+
+## Divergence Summary — dcl-02
+
+*Recorded: 2026-09-09 — Branch: dcl-02-adr-corpus-integrity-rule*
+
+The `dcl-02` implementation slice (R-1, R-5) matches the planned behavior.
+
+### Changed from plan
+
+- **Task 4 / Open Questions:** Retained `unique_live_subject`'s frontmatter skip and updated the comment to clarify separation of concerns: `adr_corpus_integrity` enforces frontmatter presence and corpus completeness, while `unique_live_subject` evaluates uniqueness among declared subjects.
+
+### Added (unplanned)
+
+- **`src/aet/cli/docs.py` & `docs/CLI.md`:** Added `--severity` option to `aet docs lint` CLI to allow filtering and enforcing rules at `error` (default) or `warning` severity, supporting warning-level rule evaluation in CLI workflows.
+
+### Deferred
+
+- **Task 7 (Merge to main):** Merging to main and integration verification deferred to `aet-ship`.
+
+---
+
+*Stage: synced*
+*Next step: run `aet-ship`*

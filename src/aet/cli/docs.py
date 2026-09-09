@@ -132,7 +132,8 @@ def cmd_lint(args: argparse.Namespace) -> int:
     if not rules_file.exists():
         return _fail(f"rules file not found: {rules_file}")
 
-    violations = docs_lint.lint_docs(rules_file, repo_root)
+    severity = getattr(args, "severity", "error") or "error"
+    violations = docs_lint.lint_docs(rules_file, repo_root, min_severity=severity)
     if violations:
         for path, message in violations:
             print(f"{path}: {message}", file=sys.stderr)
@@ -157,9 +158,14 @@ def lint(
         "--repo-root",
         help="Repository root (default: git root or current directory)",
     ),
+    severity: str = typer.Option(
+        "error",
+        "--severity",
+        help="Minimum severity to enforce: 'error' (default) or 'warning'.",
+    ),
 ) -> None:
     """Lint documentation against declarative rules."""
-    args = argparse.Namespace(rules=rules, repo_root=repo_root)
+    args = argparse.Namespace(rules=rules, repo_root=repo_root, severity=severity)
     rc = cmd_lint(args)
     raise typer.Exit(rc)
 

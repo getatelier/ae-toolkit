@@ -11,8 +11,17 @@ from pathlib import Path
 
 import yaml
 
+from aet.context_digest import AdrEntry, audit_adr_entries
+
 VALID_RULE_TYPES = frozenset(
-    {"must_contain", "must_not_contain", "path_exists", "path_absent", "unique_live_subject"}
+    {
+        "must_contain",
+        "must_not_contain",
+        "path_exists",
+        "path_absent",
+        "unique_live_subject",
+        "adr_corpus_integrity",
+    }
 )
 
 _ESCAPE_CLOSED_RE = re.compile(r"<!-- aet-lint: off -->.*?<!-- aet-lint: on -->", re.DOTALL)
@@ -183,13 +192,16 @@ def _evaluate_unique_live_subject(
             violations.append((rel, f"{reason} ({error})"))
             continue
         if data is None:
-            # ADRs without frontmatter are ignored.
+            # ADRs without frontmatter have no subject and cannot participate
+            # in subject uniqueness. The adr_corpus_integrity rule validates
+            # frontmatter presence separately.
             continue
 
         adr_id = _adr_id_from_path(md_path)
 
         raw_subject = data.get("subject")
         if raw_subject is None:
+            # Missing subject is validated by adr_corpus_integrity.
             continue
         if isinstance(raw_subject, str):
             subject_values = [raw_subject]
@@ -226,6 +238,143 @@ def _evaluate_unique_live_subject(
     return violations
 
 
+def _normalize_adr_number(value: object) -> int | None:
+    """Return an integer ADR number from a supersedes/relates reference."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip().lstrip("#")
+        stripped = re.sub(r"(?i)^adr-?", "", stripped)
+        try:
+            return int(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def _extract_adr_number(stem: str) -> int | None:
+    """Extract leading integer from ADR filename stem."""
+    number_part = stem.split("-", 1)[0]
+    if number_part.isdigit():
+        return int(number_part)
+    return None
+
+
+def _evaluate_adr_corpus_integrity(
+    target_path: Path, reason: str, repo_root: Path
+) -> list[tuple[Path, str]]:
+    """Evaluate the ``adr_corpus_integrity`` rule against *target_path*."""
+    violations: list[tuple[Path, str]] = []
+    valid_entries: list[AdrEntry] = []
+    entry_paths: dict[str, Path] = {}
+
+    for md_path in sorted(target_path.glob("*.md")):
+        if md_path.name in ("000-template.md", "README.md"):
+            continue
+
+        rel = _relative(md_path, repo_root)
+        data, error = _load_adr_frontmatter(md_path)
+        if error:
+            violations.append((rel, f"{reason} ({error})"))
+            continue
+        if data is None:
+            violations.append((rel, f"{reason} (missing 'subject')"))
+            continue
+
+        raw_subject = data.get("subject")
+        if raw_subject is None:
+            violations.append((rel, f"{reason} (missing 'subject')"))
+            continue
+        if isinstance(raw_subject, str):
+            if not raw_subject.strip():
+                violations.append((rel, f"{reason} (missing 'subject')"))
+                continue
+            subjects = [raw_subject.strip()]
+        elif isinstance(raw_subject, list) and all(isinstance(s, str) for s in raw_subject):
+            subjects = [s.strip() for s in raw_subject if s.strip()]
+            if not subjects:
+                violations.append((rel, f"{reason} (missing 'subject')"))
+                continue
+        else:
+            violations.append((rel, f"{reason} ('subject' must be a string or list of strings)"))
+            continue
+
+        raw_supersedes = data.get("supersedes", [])
+        if isinstance(raw_supersedes, (str, int)):
+            raw_supersedes = [raw_supersedes]
+        if not isinstance(raw_supersedes, list):
+            violations.append((rel, f"{reason} ('supersedes' must be a list)"))
+            continue
+
+        supersedes_nums: list[int] = []
+        has_supersedes_error = False
+        for value in raw_supersedes:
+            num = _normalize_adr_number(value)
+            if num is None:
+                violations.append((rel, f"{reason} (invalid 'supersedes' value: {value!r})"))
+                has_supersedes_error = True
+            else:
+                supersedes_nums.append(num)
+
+        raw_relates = data.get("relates", [])
+        if isinstance(raw_relates, (str, int)):
+            raw_relates = [raw_relates]
+        if not isinstance(raw_relates, list):
+            violations.append((rel, f"{reason} ('relates' must be a list)"))
+            continue
+
+        relates_nums: list[int] = []
+        has_relates_error = False
+        for value in raw_relates:
+            num = _normalize_adr_number(value)
+            if num is None:
+                violations.append((rel, f"{reason} (invalid 'relates' value: {value!r})"))
+                has_relates_error = True
+            else:
+                relates_nums.append(num)
+
+        if not has_supersedes_error and not has_relates_error:
+            entry_stem = md_path.stem
+            entry_num = _extract_adr_number(entry_stem)
+            valid_entries.append(
+                AdrEntry(
+                    stem=entry_stem,
+                    number=entry_num,
+                    subject=subjects[0],
+                    supersedes=supersedes_nums,
+                    relates=relates_nums,
+                )
+            )
+            entry_paths[entry_stem] = rel
+
+    report = audit_adr_entries(valid_entries)
+
+    for num in sorted(report.duplicate_numbers):
+        stems = report.duplicate_numbers[num]
+        ids = ", ".join(stems)
+        first_path = entry_paths[stems[0]]
+        violations.append((first_path, f"{reason} (duplicate ADR number {num:03d}: {ids})"))
+
+    for stem in sorted(report.dangling_supersedes):
+        rel = entry_paths[stem]
+        for num in report.dangling_supersedes[stem]:
+            violations.append((rel, f"{reason} (dangling supersedes: ADR-{num:03d} does not exist)"))
+
+    for stem in sorted(report.dangling_relates):
+        rel = entry_paths[stem]
+        for num in report.dangling_relates[stem]:
+            violations.append((rel, f"{reason} (dangling relates: ADR-{num:03d} does not exist)"))
+
+    for stem in sorted(report.superseded_relates):
+        rel = entry_paths[stem]
+        for num in report.superseded_relates[stem]:
+            violations.append((rel, f"{reason} (relates to superseded ADR-{num:03d})"))
+
+    return violations
+
+
 def _validate_rule(raw: object, index: int) -> dict:
     """Validate and normalize a single rule mapping."""
     if not isinstance(raw, dict):
@@ -241,8 +390,12 @@ def _validate_rule(raw: object, index: int) -> dict:
         if "value" not in rule:
             raise RuleError(index, f"'value' is required for {rtype}")
         rule["value"] = _normalize_values(rule["value"])
-    if rtype == "unique_live_subject" and "value" in rule:
-        raise RuleError(index, "'value' is not allowed for unique_live_subject")
+    if rtype in ("unique_live_subject", "adr_corpus_integrity") and "value" in rule:
+        raise RuleError(index, f"'value' is not allowed for {rtype}")
+    severity = rule.get("severity", "error")
+    if severity not in ("error", "warning"):
+        raise RuleError(index, f"invalid severity '{severity}', must be 'error' or 'warning'")
+    rule["severity"] = severity
     return rule
 
 
@@ -273,7 +426,9 @@ def _check_text(path: Path, text: str, rule: dict, reason: str) -> str | None:
     return None
 
 
-def lint_docs(rules_file: Path, repo_root: Path) -> list[tuple[Path, str]]:
+def lint_docs(
+    rules_file: Path, repo_root: Path, min_severity: str = "error"
+) -> list[tuple[Path, str]]:
     """Evaluate the documentation rules file against the checkout.
 
     Returns a list of ``(relative_path, message)`` violations. An empty list
@@ -295,6 +450,10 @@ def lint_docs(rules_file: Path, repo_root: Path) -> list[tuple[Path, str]]:
 
     violations: list[tuple[Path, str]] = []
     for _idx, rule in rules:
+        rule_severity = rule.get("severity", "error")
+        if min_severity == "error" and rule_severity == "warning":
+            continue
+
         target = Path(rule["target"])
         if target.is_absolute():
             target_path = target
@@ -321,6 +480,15 @@ def lint_docs(rules_file: Path, repo_root: Path) -> list[tuple[Path, str]]:
                 violations.append((rel_target, f"{reason} (target must be a directory: {target})"))
             else:
                 violations.extend(_evaluate_unique_live_subject(target_path, reason, repo_root))
+            continue
+
+        if rtype == "adr_corpus_integrity":
+            if not target_path.exists():
+                violations.append((rel_target, f"{reason} (target directory missing: {target})"))
+            elif not target_path.is_dir():
+                violations.append((rel_target, f"{reason} (target must be a directory: {target})"))
+            else:
+                violations.extend(_evaluate_adr_corpus_integrity(target_path, reason, repo_root))
             continue
 
         if target_path.is_dir() and rtype in ("must_contain", "must_not_contain"):

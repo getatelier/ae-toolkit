@@ -311,6 +311,62 @@ def test_unknown_rule_type_fails(tmp_path):
     assert "unknown type 'must_frobnicate'" in violations[0][1]
 
 
+def test_invalid_rule_severity_fails(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "path_exists", "target": "x.md", "reason": "exists", "severity": "fatal"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "invalid severity 'fatal'" in violations[0][1]
+
+
+def test_adr_corpus_integrity_forbids_value(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "integrity", "value": "foo"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "'value' is not allowed for adr_corpus_integrity" in violations[0][1]
+
+
+def test_warning_severity_rule_skipped_when_min_severity_error(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "path_exists", "target": "missing.md", "reason": "must exist", "severity": "warning"}],
+    )
+
+    # By default, min_severity is "error", so warning rules are skipped
+    assert docs_lint.lint_docs(rules, repo) == []
+    assert docs_lint.lint_docs(rules, repo, min_severity="error") == []
+
+
+def test_warning_severity_rule_evaluated_when_min_severity_warning(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "path_exists", "target": "missing.md", "reason": "must exist", "severity": "warning"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo, min_severity="warning")
+    assert len(violations) == 1
+    assert "expected path to exist: missing.md" in violations[0][1]
+
+
 def _write_adr(path: Path, frontmatter: dict | None, body: str = "# ADR\n") -> None:
     if frontmatter is None:
         path.write_text(body, encoding="utf-8")
@@ -439,6 +495,157 @@ def test_unique_live_subject_fails_on_invalid_subject_type(tmp_path):
     violations = docs_lint.lint_docs(rules, repo)
     assert len(violations) == 1
     assert "'subject' must be a string or list" in violations[0][1]
+
+
+def test_adr_corpus_integrity_passes_on_clean_corpus(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "010-old.md", {"subject": "state"}, "# ADR-010\n")
+    _write_adr(adr_dir / "011-new.md", {"subject": "state", "supersedes": [10]}, "# ADR-011\n")
+    _write_adr(adr_dir / "012-user.md", {"subject": "other", "relates": [11]}, "# ADR-012\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
+
+
+def test_adr_corpus_integrity_fails_on_duplicate_numbers(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "072-a.md", {"subject": "first"}, "# ADR-072a\n")
+    _write_adr(adr_dir / "072-b.md", {"subject": "second"}, "# ADR-072b\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "duplicate ADR number" in violations[0][1]
+    assert "072-a" in violations[0][1]
+    assert "072-b" in violations[0][1]
+
+
+def test_adr_corpus_integrity_fails_on_dangling_supersedes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "010-foo.md", {"subject": "foo", "supersedes": [99]}, "# ADR-010\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert violations[0][0].name == "010-foo.md"
+    assert "dangling supersedes" in violations[0][1]
+    assert "does not exist" in violations[0][1]
+
+
+def test_adr_corpus_integrity_fails_on_dangling_relates(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "010-foo.md", {"subject": "foo", "relates": [99]}, "# ADR-010\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert violations[0][0].name == "010-foo.md"
+    assert "dangling relates" in violations[0][1]
+    assert "does not exist" in violations[0][1]
+
+
+def test_adr_corpus_integrity_fails_on_relates_to_superseded_record(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "010-old.md", {"subject": "state"}, "# ADR-010\n")
+    _write_adr(adr_dir / "011-new.md", {"subject": "state", "supersedes": [10]}, "# ADR-011\n")
+    _write_adr(adr_dir / "012-user.md", {"subject": "other", "relates": [10]}, "# ADR-012\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert violations[0][0].name == "012-user.md"
+    assert "relates to superseded" in violations[0][1]
+
+
+def test_adr_corpus_integrity_fails_on_missing_subject_or_frontmatter(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "010-nofm.md", None, "# ADR-010\n")
+    _write_adr(adr_dir / "011-nosubj.md", {"supersedes": [10]}, "# ADR-011\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 2
+    paths = {v[0].name for v in violations}
+    assert paths == {"010-nofm.md", "011-nosubj.md"}
+    for v in violations:
+        assert "missing 'subject'" in v[1]
+
+
+def test_adr_corpus_integrity_fails_on_malformed_frontmatter(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    adr = adr_dir / "010-bad.md"
+    adr.write_text("---\nnot: [valid yaml: :\n---\n# ADR-010\n", encoding="utf-8")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    violations = docs_lint.lint_docs(rules, repo)
+    assert len(violations) == 1
+    assert "malformed frontmatter" in violations[0][1]
+
+
+def test_adr_corpus_integrity_excludes_template_and_readme(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adr_dir = repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    _write_adr(adr_dir / "000-template.md", None, "# Template\n")
+    _write_adr(adr_dir / "README.md", None, "# README\n")
+    _write_adr(adr_dir / "010-valid.md", {"subject": "valid"}, "# ADR-010\n")
+    rules = repo / "rules.yaml"
+    _write_rules(
+        rules,
+        [{"type": "adr_corpus_integrity", "target": "docs/adr", "reason": "ADR corpus integrity"}],
+    )
+
+    assert docs_lint.lint_docs(rules, repo) == []
 
 
 def test_must_not_contain_on_directory_scans_all_markdown_files(tmp_path):

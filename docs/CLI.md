@@ -251,6 +251,7 @@ Lint documentation against declarative rules.
 
 - `--rules` *str* — Rules file (default: .agents/doc-rules.yaml under repo root)
 - `--repo-root` *str* — Repository root (default: git root or current directory)
+- `--severity` *str* — Minimum severity to enforce: 'error' (default) or 'warning'. (default: `error`)
 
 ## `aet docs generate`
 
