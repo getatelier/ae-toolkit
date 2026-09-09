@@ -237,6 +237,38 @@ class TestPrPerTaskGitSequenceUnchanged(unittest.TestCase):
 
             self.assertEqual(git_calls, expected)
 
+    def test_epic_declaration_is_inert_in_pr_per_task(self):
+        """R-4: With integration_mode == pr-per-task and an active epic set, resolution matches no-epic result."""
+        from aet.backends.factory import create_backend
+        from aet.branch_ref import resolve_integration_branch_for_task
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = os.path.join(temp_dir, "repo")
+            os.makedirs(repo_root)
+            _init_git_repo(repo_root)
+
+            # Set epic in envelope
+            backend = create_backend(
+                queue_file=os.path.join(repo_root, ".agents", "aet-queue"),
+                history_file=os.path.join(repo_root, ".agents", "work-history.jsonl"),
+            )
+            backend.set_epic(branch="epic-branch", title="My Epic")
+            backend.close()
+
+            config = {"trunk_branch": "main"}
+            task = {
+                "id": "task-1",
+                "spec": {"frontmatter": {"source_prd": "docs/prds/alpha.md"}},
+            }
+
+            ref_with_epic = resolve_integration_branch_for_task(
+                repo_root, config, task, "pr-per-task"
+            )
+
+            # In pr-per-task mode, epic declaration in envelope must be ignored
+            self.assertEqual(ref_with_epic.ref, "main")
+            self.assertEqual(ref_with_epic.provenance, "trunk")
+
 
 if __name__ == "__main__":
     unittest.main()

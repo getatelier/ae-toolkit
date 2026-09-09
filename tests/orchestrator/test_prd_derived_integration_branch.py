@@ -456,6 +456,41 @@ class TestPrdDerivedIntegrationBranch(unittest.TestCase):
             remote_heads = _remote_heads(repo_root)
             self.assertNotIn("alpha-prd", remote_heads)
 
+    def test_declared_prd_branch_outranks_stem(self):
+        """R-5: A PRD declaring branch outranks its filename stem, and a plain PRD still derives the stem."""
+        from aet.branch_ref import resolve_integration_branch_for_task
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = os.path.join(temp_dir, "repo")
+            os.makedirs(repo_root)
+            _init_git_repo(repo_root, os.path.join(temp_dir, "origin.git"))
+
+            # PRD declaring a custom branch
+            declared_prd = Path(repo_root, "docs", "prds", "my-feature-stem.md")
+            declared_prd.parent.mkdir(parents=True, exist_ok=True)
+            declared_prd.write_text(
+                "---\nbranch: declared-custom-branch\n---\n# PRD\n", encoding="utf-8"
+            )
+
+            # Plain PRD
+            plain_prd = Path(repo_root, "docs", "prds", "plain-feature-stem.md")
+            plain_prd.write_text("# Plain PRD\n", encoding="utf-8")
+
+            task_declared = {"spec": {"frontmatter": {"source_prd": "docs/prds/my-feature-stem.md"}}}
+            task_plain = {"spec": {"frontmatter": {"source_prd": "docs/prds/plain-feature-stem.md"}}}
+
+            ref_declared = resolve_integration_branch_for_task(
+                repo_root, {}, task_declared, "single-pr"
+            )
+            self.assertEqual(ref_declared.ref, "declared-custom-branch")
+            self.assertEqual(ref_declared.provenance, "document")
+
+            ref_plain = resolve_integration_branch_for_task(
+                repo_root, {}, task_plain, "single-pr"
+            )
+            self.assertEqual(ref_plain.ref, "plain-feature-stem")
+            self.assertEqual(ref_plain.provenance, "prd")
+
 
 if __name__ == "__main__":
     unittest.main()

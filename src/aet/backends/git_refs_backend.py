@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -589,3 +590,43 @@ class GitRefsBackend(TaskBackend):
         envelope_sha = self._write_blob(_canonical_json(self._envelope))
         if self._ref_sha(ENVELOPE_REF) != envelope_sha:
             self._git("update-ref", ENVELOPE_REF, envelope_sha).check_returncode()
+
+    def read_epic(self) -> dict[str, Any] | None:
+        """Return the active epic declaration from the envelope, or None."""
+        envelope = self._read_envelope()
+        self._envelope = envelope
+        epic = envelope.get("epic")
+        return epic if isinstance(epic, dict) else None
+
+    def set_epic(
+        self,
+        branch: str,
+        title: str | None = None,
+        body_file: str | None = None,
+    ) -> dict[str, Any]:
+        """Set the active epic declaration in the envelope."""
+        if not branch or not branch.strip():
+            raise ValueError("Branch name is required")
+        epic_data: dict[str, Any] = {
+            "branch": branch.strip(),
+            "set_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if title is not None:
+            epic_data["title"] = title
+        if body_file is not None:
+            bf_path = Path(body_file)
+            if not bf_path.is_absolute():
+                bf_path = Path(self.repo_root) / bf_path
+            if not bf_path.is_file():
+                raise ValueError(f"Body file not found: {body_file}")
+            epic_data["body_file"] = body_file
+
+        data = self.load()
+        self.save(data["queue"], wrapper={"epic": epic_data})
+        return epic_data
+
+    def clear_epic(self) -> None:
+        """Clear the active epic declaration from the envelope."""
+        data = self.load()
+        self._envelope.pop("epic", None)
+        self.save(data["queue"])

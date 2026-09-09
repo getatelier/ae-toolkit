@@ -116,3 +116,20 @@ class TaskBackend(ABC):
         would self-deadlock under POSIX ``flock`` semantics.
         """
         raise NotImplementedError("seal must be implemented by the storage backend")
+
+    def read_epic(self) -> dict[str, Any] | None:
+        """Return the active epic declaration from the backend, or None."""
+        return None
+
+    def set_epic(
+        self,
+        branch: str,
+        title: str | None = None,
+        body_file: str | None = None,
+    ) -> dict[str, Any]:
+        """Set the active epic declaration in the backend."""
+        raise NotImplementedError
+
+    def clear_epic(self) -> None:
+        """Clear the active epic declaration from the backend."""
+        raise NotImplementedError

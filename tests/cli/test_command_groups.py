@@ -330,6 +330,7 @@ class TestNounGroups(unittest.TestCase):
         "backlog",
         "desk",
         "docs",
+        "epic",
         "gate",
         "handoff",
         "hooks",

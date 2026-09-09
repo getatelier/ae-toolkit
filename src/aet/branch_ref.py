@@ -149,14 +149,23 @@ def resolve_integration_branch_for_task(
     task: dict[str, Any],
     integration_mode: str,
     cli_base: str | None = None,
+    backend: Any = None,
 ) -> BranchRef:
     """Resolve the integration branch for a specific task.
 
     Explicit overrides (CLI, env) always win.  In ``single-pr`` mode the branch
-    is derived from the task's PRD when no static override is supplied, so
-    concurrent PRDs each carry their own integration branch (R-17).  In
-    ``pr-per-task`` mode the configured integration branch (or trunk) is used,
-    preserving ADR-045 Scenario A as the degenerate case.
+    is resolved using the full resolution order:
+    1. CLI override (`cli_base`) -> provenance 'cli'
+    2. Environment (`AET_WORK_BASE_BRANCH`) -> provenance 'env'
+    3. Task record stamp (`task["integration_branch"]`) -> provenance 'stamp'
+    4. Parent document declared branch (`branch` in PRD frontmatter) -> provenance 'document'
+    5. Envelope active epic (`read_epic()`) -> provenance 'epic'
+    6. PRD filename stem fallback -> provenance 'prd'
+    7. Config `integration_branch` -> provenance 'config'
+    8. Trunk fallback -> provenance 'trunk'
+
+    In ``pr-per-task`` mode, steps 3-6 are skipped, preserving ADR-045 Scenario A
+    as the degenerate case.
     """
     if cli_base:
         return BranchRef(cli_base, "cli")
@@ -166,7 +175,41 @@ def resolve_integration_branch_for_task(
         return BranchRef(env_base, "env")
 
     if integration_mode == "single-pr":
+        # 3. Task record stamp
+        stamp = task.get("integration_branch")
+        if not stamp and isinstance(task.get("stamp"), dict):
+            stamp = task.get("stamp", {}).get("branch")
+        if stamp:
+            return BranchRef(str(stamp), "stamp")
+
+        # 4. Parent document declared branch
         prd_path = _task_prd_path(task, repo_root)
+        if prd_path and Path(prd_path).is_file():
+            from aet import plan_parser
+
+            try:
+                fm = plan_parser.parse_frontmatter(Path(prd_path))
+                declared_branch = fm.get("branch")
+                if declared_branch:
+                    return BranchRef(str(declared_branch), "document")
+            except Exception:
+                pass
+
+        # 5. Envelope active epic
+        try:
+            if backend is not None:
+                epic = backend.read_epic()
+            else:
+                from aet.backends.git_refs_backend import GitRefsBackend
+
+                b = GitRefsBackend(repo_root=str(repo_root))
+                epic = b.read_epic()
+            if epic and epic.get("branch"):
+                return BranchRef(str(epic["branch"]), "epic")
+        except Exception:
+            pass
+
+        # 6. PRD filename stem fallback
         derived = derive_integration_branch_from_prd(prd_path)
         if derived:
             return BranchRef(derived, "prd")
