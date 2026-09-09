@@ -38,8 +38,8 @@ When running batch or single-plan execution via the `aet` CLI, preflight failure
 - [x] `aet run` fails immediately with exit code 1 and error diagnostics on stderr if `refs/aet/breaker` is tripped or the queue is invalid, before any detached process is announced (satisfies: R-1).
 - [x] `aet run-one` fails immediately with exit code 1 if the target plan is missing, fails intake, or the breaker is tripped (satisfies: R-1).
 - [x] `_spawn_detached` checks child process vitality before printing the run ID and exiting 0 (satisfies: R-2).
-- [ ] `aet status` displays a clear warning banner when `refs/aet/breaker` has a tripped signature (satisfies: R-3).
-- [ ] `aet status` reports the failure status and summary of the previous run when it exited non-zero (satisfies: R-4).
+- [x] `aet status` displays a clear warning banner when `refs/aet/breaker` has a tripped signature (satisfies: R-3).
+- [x] `aet status` reports the failure status and summary of the previous run when it exited non-zero (satisfies: R-4).
 - [ ] `aet breaker show` lists active failure signatures, per-task counts, and trip status (satisfies: R-5).
 - [ ] `aet breaker reset` deletes or resets `refs/aet/breaker` and outputs confirmation (satisfies: R-5).
 - [ ] All breaker and orchestrator tests run in isolated temp repositories and do not write to the host repo (satisfies: R-6).
