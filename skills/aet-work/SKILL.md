@@ -149,8 +149,13 @@ Configure the mode with `aet configure`:
 aet configure --integration-mode single-pr --scope user
 ```
 
-The per-epic integration branch is a per-run input, not a config value. Use
-`--base` with `aet run` or `aet run-one`:
+In `single-pr` mode, declare the active epic branch with `aet epic set`:
+
+```bash
+aet epic set feat/epic-name --title "Feature: epic description"
+```
+
+Once declared, `aet run` and `aet run-one` use the active epic without repeating flags. You can also pass `--base` as an explicit override:
 
 ```bash
 aet run --base feat/epic-name

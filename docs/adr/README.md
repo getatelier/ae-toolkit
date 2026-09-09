@@ -91,6 +91,8 @@ Do **not** write an ADR for:
 - [071 — A Failure Whose Remedy Reads the Record Is Recorded, Even When It Does Not Count](071-a-non-countable-failure-is-recorded.md)
 - [073 — Partitioned Plan Directory Layout & Resilient Closure Archival](073-partitioned-plan-directory-layout.md)
 - [074 — A Fact a Document Copies From Code Is Checked Against That Code](074-a-document-fact-is-checked-against-its-source.md)
+- [075 — Synchronous Preflight Validation and Status Truthfulness](075-synchronous-preflight-and-status-integrity.md)
+- [076 — An Epic Is Declared, Not Inferred](076-an-epic-is-declared-not-inferred.md)
 
 ## Format
 

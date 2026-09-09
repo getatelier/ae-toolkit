@@ -10,6 +10,7 @@ Accepted. Builds on ADR-044 (base branch is configured, not assumed), which is a
 hard prerequisite. Generalizes ADR-029 (autonomous merge is a fail-closed gate)
 and the unblocking semantics of ADR-011 (forward-only work state). Interacts
 with ADR-004 (unify `aet run`) and ADR-013 (queue as ephemeral sprint board).
+Amended by [ADR-076](076-an-epic-is-declared-not-inferred.md) regarding epic identity representation.
 
 Adapted from a design proposed alongside
 `docs/bugs/2026-07-22-orchestrator-base-branch-hardcoded.md`. The proposal was

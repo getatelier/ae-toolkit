@@ -1,3 +1,10 @@
+---
+# id: [feature-name]
+# status: [draft / review / accepted]
+# branch: [optional-declared-integration-branch]
+# pr_title: "[Optional epic PR title]"
+---
+
 # PRD: [Feature Name]
 
 ## Overview
