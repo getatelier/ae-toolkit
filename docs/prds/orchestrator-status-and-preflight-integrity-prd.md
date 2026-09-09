@@ -40,9 +40,9 @@ When running batch or single-plan execution via the `aet` CLI, preflight failure
 - [x] `_spawn_detached` checks child process vitality before printing the run ID and exiting 0 (satisfies: R-2).
 - [x] `aet status` displays a clear warning banner when `refs/aet/breaker` has a tripped signature (satisfies: R-3).
 - [x] `aet status` reports the failure status and summary of the previous run when it exited non-zero (satisfies: R-4).
-- [ ] `aet breaker show` lists active failure signatures, per-task counts, and trip status (satisfies: R-5).
-- [ ] `aet breaker reset` deletes or resets `refs/aet/breaker` and outputs confirmation (satisfies: R-5).
-- [ ] All breaker and orchestrator tests run in isolated temp repositories and do not write to the host repo (satisfies: R-6).
+- [x] `aet breaker show` lists active failure signatures, per-task counts, and trip status (satisfies: R-5).
+- [x] `aet breaker reset` deletes or resets `refs/aet/breaker` and outputs confirmation (satisfies: R-5).
+- [x] All breaker and orchestrator tests run in isolated temp repositories and do not write to the host repo (satisfies: R-6).
 
 ## Technical Notes
 
