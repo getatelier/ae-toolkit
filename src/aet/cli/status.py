@@ -12,10 +12,14 @@ from pathlib import Path
 
 import typer
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
+from aet import (
+    breaker,  # noqa: E402
+    telemetry,  # noqa: E402
+)
 from aet.backends.factory import create_backend  # noqa: E402
 from aet.liveness import is_run_alive  # noqa: E402
 from aet.plan_parser import parse_frontmatter  # noqa: E402
+from aet.project_id import derive_project_slug  # noqa: E402
 from aet.queue import (  # noqa: E402
     QueueIntegrityError,
     current_state,
@@ -96,7 +100,131 @@ def _queue_updated_at(backend) -> str | None:
     return None
 
 
-def _json_projection(queue: list[dict], backend, runs_dir: Path) -> dict:
+def _circuit_breaker_status(repo_root: Path) -> dict:
+    """Inspect refs/aet/breaker and return structured circuit breaker status."""
+    breaker_store = breaker.BreakerStore(repo_root)
+    tally = breaker_store.load()
+    tripped_sig = breaker.systemic_tripped(tally)
+    if tripped_sig is not None:
+        affected = sorted(tally.get(tripped_sig, set()))
+        return {
+            "tripped": True,
+            "signature": tripped_sig,
+            "affected_tasks": affected,
+            "count": len(affected),
+            "affected_task_count": len(affected),
+            "remedy": "aet breaker reset",
+        }
+    return {
+        "tripped": False,
+        "signature": None,
+        "affected_tasks": [],
+        "count": 0,
+        "affected_task_count": 0,
+        "remedy": None,
+    }
+
+
+def _latest_run_summary(repo_root: Path) -> dict | None:
+    """Find and return the latest run telemetry summary for repo_root, if any."""
+    archive_root = telemetry.archive_dir()
+    slug = derive_project_slug(repo_root)
+    project_dir = archive_root / slug
+    if not project_dir.is_dir():
+        return None
+
+    candidates: list[tuple[str, Path, dict]] = []
+    for run_dir, date_segment, run_id in telemetry._iter_project_run_dirs(project_dir):
+        summary_path = run_dir / "last-run.json"
+        summary = None
+        if summary_path.is_file():
+            summary = telemetry.read_run_summary(summary_path)
+        if summary is None:
+            records = []
+            for jsonl_path in run_dir.glob("*.jsonl"):
+                records.extend(telemetry.read_jsonl(jsonl_path))
+            summaries = [r for r in records if r.get("type") == "run_summary"]
+            if summaries:
+                summary = summaries[-1]
+
+        if summary is not None:
+            timestamp = (
+                summary.get("end_time")
+                or summary.get("start_time")
+                or f"{date_segment}T00:00:00Z"
+            )
+            candidates.append((timestamp, run_dir, summary))
+
+    if not candidates:
+        return None
+
+    candidates.sort(
+        key=lambda x: (x[0], x[1].stat().st_mtime if x[1].exists() else 0),
+        reverse=True,
+    )
+    _, run_dir, summary = candidates[0]
+
+    run_id = summary.get("run_id", run_dir.name)
+    outcome = summary.get("outcome", "unknown")
+    exit_code = summary.get("exit_code")
+    tasks_failed = summary.get("tasks_failed", 0)
+    tasks_succeeded = summary.get("tasks_succeeded", 0)
+    start_time = summary.get("start_time")
+    end_time = summary.get("end_time")
+
+    error_summary = None
+    if (
+        outcome == "failure"
+        or (exit_code is not None and exit_code != 0)
+        or tasks_failed > 0
+    ):
+        stage_records = []
+        for jsonl_path in sorted(run_dir.glob("*.jsonl")):
+            for rec in telemetry.read_jsonl(jsonl_path):
+                if rec.get("type") in ("stage", "triage") and (
+                    rec.get("result") == "failure"
+                    or rec.get("outcome") in ("failure", "quarantined")
+                ):
+                    stage_records.append(rec)
+
+        reasons = []
+        for rec in stage_records:
+            if rec.get("output_excerpt"):
+                reasons.append(rec["output_excerpt"].strip())
+            elif rec.get("failure_class"):
+                stage_name = rec.get("stage") or "stage"
+                reasons.append(
+                    f"Stage '{stage_name}' failed with {rec['failure_class']}"
+                )
+            elif rec.get("reason"):
+                reasons.append(rec["reason"])
+
+        if reasons:
+            error_summary = "; ".join(reasons)
+        else:
+            code_str = f" with exit code {exit_code}" if exit_code is not None else ""
+            fail_count_str = f" ({tasks_failed} failed task(s))" if tasks_failed else ""
+            error_summary = f"Run terminated{code_str}{fail_count_str}"
+
+    return {
+        "run_id": run_id,
+        "outcome": outcome,
+        "exit_code": exit_code,
+        "summary": error_summary,
+        "start_time": start_time,
+        "end_time": end_time,
+        "tasks_failed": tasks_failed,
+        "tasks_succeeded": tasks_succeeded,
+    }
+
+
+def _json_projection(
+    queue: list[dict],
+    backend,
+    runs_dir: Path,
+    breaker_info: dict | None = None,
+    last_run_info: dict | None = None,
+) -> dict:
     """Build the machine-readable status projection (minimal v1 schema)."""
     counts: dict[str, int] = {}
     for task in queue:
@@ -105,6 +233,17 @@ def _json_projection(queue: list[dict], backend, runs_dir: Path) -> dict:
     return {
         "queue_updated_at": _queue_updated_at(backend),
         "active_runs": _active_runs(runs_dir),
+        "circuit_breaker": breaker_info
+        if breaker_info is not None
+        else {
+            "tripped": False,
+            "signature": None,
+            "affected_tasks": [],
+            "count": 0,
+            "affected_task_count": 0,
+            "remedy": None,
+        },
+        "last_run": last_run_info,
         "summary": counts,
         "tasks": [
             {
@@ -146,10 +285,31 @@ def _run(
         # return an empty list and hide the very tasks status must surface.
         queue = backend.load(verify=False)["queue"]
     runs_dir = Path.cwd() / ".agents" / "runs"
+    repo_root = Path(queue_file).resolve().parent.parent
+    breaker_info = _circuit_breaker_status(repo_root)
+    last_run_info = _latest_run_summary(repo_root)
 
     if json_output:
-        print(json.dumps(_json_projection(queue, backend, runs_dir), indent=2))
+        print(
+            json.dumps(
+                _json_projection(
+                    queue, backend, runs_dir, breaker_info, last_run_info
+                ),
+                indent=2,
+            )
+        )
         return 0
+
+    if breaker_info["tripped"]:
+        sig = breaker_info["signature"]
+        count = breaker_info["affected_task_count"]
+        tasks_list = breaker_info["affected_tasks"]
+        tasks_detail = f" ({', '.join(tasks_list)})" if tasks_list else ""
+        print("\n⚠️  CIRCUIT BREAKER TRIPPED")
+        print(
+            f"  Systemic circuit breaker is active for signature '{sig}' ({count} tasks affected{tasks_detail})."
+        )
+        print("  Remedy: Inspect errors and run `aet breaker reset` to clear.\n")
 
     counts = {
         "planned": 0,
@@ -180,6 +340,22 @@ def _run(
             print(f"  - {run['id']} (PID {run['pid']}){started}")
     else:
         print("\nNo active detached runs.")
+        if last_run_info and (
+            last_run_info.get("outcome") == "failure"
+            or (
+                last_run_info.get("exit_code") is not None
+                and last_run_info.get("exit_code") != 0
+            )
+            or last_run_info.get("tasks_failed", 0) > 0
+        ):
+            print("\nPrevious run failed:")
+            print(f"  - Run ID: {last_run_info['run_id']}")
+            if last_run_info.get("exit_code") is not None:
+                print(f"  - Exit code: {last_run_info['exit_code']}")
+            if last_run_info.get("outcome"):
+                print(f"  - Outcome: {last_run_info['outcome']}")
+            if last_run_info.get("summary"):
+                print(f"  - Summary: {last_run_info['summary']}")
 
     terminal = {"merged", "abandoned"}
     active_ids = {t.get("id") for t in queue}
@@ -226,7 +402,6 @@ def _run(
     # Worktree paths are recorded relative to the repo root, so they must be
     # resolved against it and not against the current directory — otherwise
     # `aet status` run from inside a worktree reports every worktree as stale.
-    repo_root = Path(queue_file).resolve().parent.parent
     stale_worktrees = []
     for task in queue:
         worktree = task.get("worktree")
@@ -270,7 +445,9 @@ def status(
         help="Print a machine-readable JSON projection instead of the human report",
     ),
 ) -> None:
-    """Show work queue status."""
+    """Show work queue status, active detached runs, systemic circuit breaker
+    warnings, and last-run telemetry diagnostics.
+    """
     rc = _run(queue_file, history_file, plans_dir, json_output)
     raise typer.Exit(rc)
 
