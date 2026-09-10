@@ -38,6 +38,7 @@ _TOP_LEVEL_COMMANDS = [
     "mine-learnings",
     "next",
     "panel",
+    "performance-report",
     "reconcile",
     "release-prep",
     "report",

@@ -824,6 +824,19 @@ Print execution telemetry summary.
 - `--prune` *int* — Prune telemetry runs older than DAYS (dry run unless --force)
 - `--force` *boolean* — Actually delete prune candidates (default is a dry run) (default: `False`)
 
+## `aet performance-report`
+
+Cost, tokens and stage time per PRD for the current project.
+
+### Options
+
+- `--project` *str* — Archive project directory (defaults to the current repository)
+- `--worktree` *str* — Limit to one worktree label (default: every worktree of the project)
+- `--prds` *path* — PRD directory (default: docs/prds under the repository root)
+- `--since` *str* — Only include stages starting at or after this ISO-8601 timestamp
+- `--out` *path* — Write markdown here instead of stdout
+- `--json` *path* — Write the full JSON payload here
+
 ## `aet retro`
 
 Generate a retro from AET telemetry, split by project-level and AET-level fixes.

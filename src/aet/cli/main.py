@@ -53,6 +53,7 @@ from aet.cli import (
     mine_learnings,
     next as next_module,
     panel,
+    performance_report,
     plan,
     plans,
     reconcile,
@@ -229,6 +230,11 @@ app.add_typer(panel.app, name="panel")
 app.add_typer(reconcile.app, name="reconcile")
 app.add_typer(release_prep.app, name="release-prep")
 app.add_typer(report.app, name="report")
+app.add_typer(
+    performance_report.app,
+    name="performance-report",
+    help="Cost, tokens and stage time per PRD for the current project.",
+)
 app.add_typer(retro.app, name="retro")
 app.add_typer(status.app, name="status")
 app.add_typer(validate_workflows.app, name="validate-workflows")

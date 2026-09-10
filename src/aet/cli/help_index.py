@@ -43,6 +43,7 @@ SECTIONS: dict[str, str] = {
     "size": "Ship work",
     # Inspect & learn
     "report": "Inspect & learn",
+    "performance-report": "Inspect & learn",
     "metrics": "Inspect & learn",
     "retro": "Inspect & learn",
     "mine-learnings": "Inspect & learn",
