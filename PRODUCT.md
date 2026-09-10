@@ -4,9 +4,9 @@ An integrated agentic engineering system. Skills are directories of instructions
 
 ---
 
-## Current Version: 1.14.0
+## Current Version: 1.15.0
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 ---
 
@@ -67,6 +67,7 @@ Carry context and lessons across runs.
 - **aet breaker** — Shows the tracked failure signatures behind the circuit breaker and resets it. Clearing a tripped breaker no longer needs a low-level git ref command.
 - **aet docs lint** — Checks a fact a document copies from the tree against the tree itself: a retired data path, an architecture-decision relation, or a code symbol an anchor names. A deliberate divergence is declared with an escape marker rather than left to decay.
 - **aet state audit** — Reconciles stored task state against git and names any task record carrying no plan spec.
+- **aet performance-report** — Reports what agent runs consumed for the project in the current directory: cost, tokens and stage time per PRD, with each PRD's share of the total. Groups plans by the PRD that owns them, falls back to the slice prefix when a project keeps no PRDs, and writes the same figures as JSON for charting. Where a stage reported no usage the report says so and treats its cost as a floor rather than a zero.
 
 ---
 
@@ -79,7 +80,7 @@ Carry context and lessons across runs.
 | `aet` binary          | A single multicall binary that dispatches to every toolkit subcommand; `aet setup link` installs the console script on `PATH`. |
 | `aet context`         | Session-start context loader that surfaces git state, plan stages, budgets, rules digest, and recent learnings. |
 | `aet size` commands   | Report and backfill delivered diff-size measurements for closed plans to calibrate sizing estimates. |
-| Telemetry panel       | A local, stdlib-launched viewer for the telemetry archive, with a Plans lens for browsing plans, pipeline progress, run history, test-run provenance badges, and session-log traceability. |
+| Telemetry panel       | A local, stdlib-launched viewer for the telemetry archive, with a Plans lens for browsing plans, pipeline progress, run history, test-run provenance badges, session-log traceability, and total cost and token figures for whatever the filters select. |
 | GitHub Issues         | One-way projection of the board, plus `aet sprint intake` for reading `aet:sprint` issues as declared intent. Not a task store.       |
 | git-refs backend      | The task store. Queue state lives in tracked git refs and travels with the repository; in shadow posture it stays entirely local and is never pushed.              |
 | Git                   | All skills use git commands for branch, worktree, and merge operations; no agent-specific APIs required.                             |
@@ -87,6 +88,15 @@ Carry context and lessons across runs.
 ---
 
 ## What's New
+
+### What's New in v1.15.0
+
+- **You can see what a PRD cost to build** — `aet performance-report`, run inside any project, reports cost, tokens and stage time per PRD, with each PRD's share of the total and a breakdown per plan. It needs no arguments; it works out which project it is in.
+- **The report is honest about what it does not know** — a stage that failed before it reported usage contributes time and no cost, so every figure names its coverage and is stated as a floor rather than presented as complete.
+- **The same figures are available as data** — `--json` writes the full data set, one row per stage session, ready for charting or a spreadsheet.
+- **The telemetry panel shows total cost and total tokens** — the two figures sit beside plans, sessions, success rate and time, and follow whatever filters are applied.
+
+**Upgrading from 1.14.x:** nothing to change. The new command reads the telemetry archive already on disk, and the panel gains two cards.
 
 ### What's New in v1.14.0
 

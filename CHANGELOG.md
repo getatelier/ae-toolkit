@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.15.0] — 2026-09-10
+
+### Added
+
+- **`aet performance-report` reports what a PRD cost to build** — run it inside a project and it resolves the repository itself, reads every worktree of that project from the telemetry archive, and groups plans by the PRD that owns each slice prefix. It reports plans, stage sessions, stage time, tokens and cost per group, with each group's share of the total. `--json` writes the same payload in full, one row per stage session, for charting; the markdown renders from that payload, so the two forms cannot disagree. `--since`, `--worktree`, `--project` and `--prds` narrow or redirect the scope. Attribution uses a majority rule, because a PRD cites slices it merely depends on and a plain text match over-attributes: each prefix belongs to the PRD citing the most slices of that prefix. A project with no PRD directory groups by slice prefix instead. An absent cost counts as a coverage gap rather than a zero, so a stage that fails before it reports usage contributes time and no cost, and every cost figure is stated as a floor.
+- **The telemetry panel shows total cost and total tokens** — both lenses gain the two cards beside plans, sessions, success rate and time. The Plans lens sums the filtered plans' stage sessions. The Runs lens sums each run's resolved figure, preferring the run summary over the sum of its stages, so no stage counts twice. A card names its coverage when only some records carried a figure and stays silent when coverage is complete. Nothing measured shows a dash, not a zero.
+
+---
+
 ## [1.14.0] — 2026-09-09
 
 ### Added
