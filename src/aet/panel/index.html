@@ -87,7 +87,8 @@ function fmtTokens(n) {
   if (n == null || isNaN(n)) return "—";
   if (n < 1000) return `${n}`;
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
-  return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  return `${(n / 1_000_000_000).toFixed(2)}B`;
 }
 function fmtCost(c) {
   if (c == null || isNaN(c)) return "—";
@@ -320,8 +321,41 @@ function claimedTestCounts(tests) {
 }
 // PROVENANCE-HELPERS-END
 
+/* ---------------- usage totals ---------------- */
+
+// USAGE-HELPERS-START — extracted verbatim and run under node by
+// tests/panel/test_panel_usage_totals.py. Keep this block free of JSX and of
+// anything the browser-only scope provides.
+//
+// Cost and token figures are optional on every record that carries them. An
+// agent CLI that printed no usage line leaves them null, and the archive keeps
+// the null instead of writing a zero. A total therefore adds only the records
+// that hold a number, and reports how many did not, so a partial total is
+// never read as a complete one. Nothing measured means no figure — a null, not
+// a zero (ADR-031).
+function sumUsage(records, field) {
+  const list = records || [];
+  let total = 0;
+  let counted = 0;
+  for (const rec of list) {
+    const value = rec ? rec[field] : null;
+    if (typeof value === "number" && isFinite(value)) {
+      total += value;
+      counted++;
+    }
+  }
+  return { total: counted ? total : null, counted, missing: list.length - counted };
+}
+// USAGE-HELPERS-END
+
 function fmtPassRate(rate) {
   return rate == null ? "—" : `${Math.round(rate * 100)}%`;
+}
+
+// A complete total needs no caption. A partial one names its coverage.
+function fmtUsageSub(usage, noun) {
+  if (!usage || !usage.missing) return null;
+  return `${usage.counted} of ${usage.counted + usage.missing} ${noun} measured`;
 }
 
 function buildRun(r) {
@@ -1233,7 +1267,14 @@ function App() {
     const stageCount = filtered.reduce((a, r) => a + r.stages.length, 0);
     const ok = filtered.filter(r => r.status === "success").length;
     const totalTime = filtered.reduce((a, r) => a + (r.duration || 0), 0);
-    return { stageCount, ok, totalTime };
+    // A run resolves its own cost and tokens in buildRun, preferring the
+    // run_summary figure over the sum of its stages, so summing per run here
+    // never double-counts a stage.
+    return {
+      stageCount, ok, totalTime,
+      cost: sumUsage(filtered, "cost"),
+      tokens: sumUsage(filtered, "tokens"),
+    };
   }, [filtered]);
 
   const planData = useMemo(() => buildPlans(runs), [runs]);
@@ -1255,12 +1296,18 @@ function App() {
   }, [planData, filterFolder, filterProject, filterStatus, search]);
 
   const planStats = useMemo(() => {
-    const stageCount = filteredPlans.reduce((a, p) => a + p.sessions.length, 0);
+    // A plan holds stage sessions, not run summaries, so its usage totals come
+    // from the sessions. A plan attributed only through run_summary task_ids
+    // has no sessions and contributes nothing to either total.
+    const sessions = filteredPlans.flatMap(p => p.sessions);
+    const stageCount = sessions.length;
     const ok = filteredPlans.filter(p => p.status === "success").length;
-    const totalTime = filteredPlans.reduce(
-      (a, p) => a + p.sessions.reduce((s, x) => s + (x.duration_seconds || 0), 0), 0
-    );
-    return { stageCount, ok, totalTime };
+    const totalTime = sessions.reduce((a, x) => a + (x.duration_seconds || 0), 0);
+    return {
+      stageCount, ok, totalTime,
+      cost: sumUsage(sessions, "cost_estimate"),
+      tokens: sumUsage(sessions, "token_count"),
+    };
   }, [filteredPlans]);
 
   const selected = runs.find(r => r.dir === selectedId) || null;
@@ -1308,13 +1355,15 @@ function App() {
 
       {runs.length > 0 && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
             {lens === "plans" ? (
               <>
                 <StatCard label="Plans" value={filteredPlans.length} sub={`of ${planData.plans.length} total`} />
                 <StatCard label="Stage sessions" value={planStats.stageCount} />
                 <StatCard label="Success rate" value={filteredPlans.length ? `${Math.round((planStats.ok / filteredPlans.length) * 100)}%` : "—"} sub={`${planStats.ok} ok / ${filteredPlans.length - planStats.ok} failed`} />
                 <StatCard label="Total time" value={fmtDuration(planStats.totalTime)} />
+                <StatCard label="Total cost" value={fmtCost(planStats.cost.total)} sub={fmtUsageSub(planStats.cost, "sessions")} />
+                <StatCard label="Total tokens" value={fmtTokens(planStats.tokens.total)} sub={fmtUsageSub(planStats.tokens, "sessions")} />
               </>
             ) : (
               <>
@@ -1322,6 +1371,8 @@ function App() {
                 <StatCard label="Stage sessions" value={stats.stageCount} />
                 <StatCard label="Success rate" value={filtered.length ? `${Math.round((stats.ok / filtered.length) * 100)}%` : "—"} sub={`${stats.ok} ok / ${filtered.length - stats.ok} failed`} />
                 <StatCard label="Total time" value={fmtDuration(stats.totalTime)} />
+                <StatCard label="Total cost" value={fmtCost(stats.cost.total)} sub={fmtUsageSub(stats.cost, "runs")} />
+                <StatCard label="Total tokens" value={fmtTokens(stats.tokens.total)} sub={fmtUsageSub(stats.tokens, "runs")} />
               </>
             )}
           </div>
